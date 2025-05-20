@@ -1,3 +1,4 @@
+
 // src/app/dashboard/driver/publish-trip/page.tsx
 "use client";
 
@@ -13,6 +14,7 @@ import { LOCATIONS, Location } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
+import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, Users, PlusCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
@@ -20,18 +22,18 @@ import { useState } from "react";
 
 const TripFormSchema = z.object({
   origin: z.custom<Location>((val) => LOCATIONS.includes(val as Location), {
-    message: "Please select a valid origin.",
+    message: "Por favor selecciona un origen válido.",
   }),
   destination: z.custom<Location>((val) => LOCATIONS.includes(val as Location), {
-    message: "Please select a valid destination.",
+    message: "Por favor selecciona un destino válido.",
   }),
   date: z.date({
-    required_error: "A date for the trip is required.",
+    required_error: "Se requiere una fecha para el viaje.",
   }),
-  seats: z.coerce.number().min(1, "At least 1 seat must be available.").max(10, "Maximum 10 seats."),
+  seats: z.coerce.number().min(1, "Debe haber al menos 1 asiento disponible.").max(10, "Máximo 10 asientos."),
 }).refine(data => data.origin !== data.destination, {
-  message: "Origin and destination cannot be the same.",
-  path: ["destination"], // Or apply to 'origin' or make it a form-level error
+  message: "El origen y el destino no pueden ser iguales.",
+  path: ["destination"],
 });
 
 export default function PublishTripPage() {
@@ -51,11 +53,11 @@ export default function PublishTripPage() {
     await new Promise(resolve => setTimeout(resolve, 1000));
     console.log("Trip data submitted:", data);
     toast({
-      title: "Trip Published!",
-      description: `Your trip from ${data.origin} to ${data.destination} on ${format(data.date, "PPP")} has been successfully published.`,
+      title: "¡Viaje Publicado!",
+      description: `Tu viaje de ${data.origin} a ${data.destination} el ${format(data.date, "PPP", { locale: es })} ha sido publicado exitosamente.`,
       variant: "default"
     });
-    form.reset({ seats: 1 }); // Reset form after successful submission
+    form.reset({ seats: 1 }); 
     setIsSubmitting(false);
   }
 
@@ -64,10 +66,10 @@ export default function PublishTripPage() {
       <CardHeader>
         <div className="flex items-center gap-3 mb-2">
           <PlusCircle className="h-8 w-8 text-primary" />
-          <CardTitle className="text-2xl font-bold">Publish a New Trip</CardTitle>
+          <CardTitle className="text-2xl font-bold">Publicar un Nuevo Viaje</CardTitle>
         </div>
         <CardDescription>
-          Fill in the details below to offer a ride to fellow travelers.
+          Completa los detalles a continuación para ofrecer un viaje a otros viajeros.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -80,12 +82,12 @@ export default function PublishTripPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4 text-muted-foreground" /> Origin
+                      <MapPin className="h-4 w-4 text-muted-foreground" /> Origen
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select origin city" />
+                          <SelectValue placeholder="Selecciona ciudad de origen" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -106,12 +108,12 @@ export default function PublishTripPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
-                      <MapPin className="h-4 w-4 text-muted-foreground" /> Destination
+                      <MapPin className="h-4 w-4 text-muted-foreground" /> Destino
                     </FormLabel>
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Select destination city" />
+                          <SelectValue placeholder="Selecciona ciudad de destino" />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
@@ -134,7 +136,7 @@ export default function PublishTripPage() {
               render={({ field }) => (
                 <FormItem className="flex flex-col">
                   <FormLabel className="flex items-center gap-1">
-                     <CalendarIcon className="h-4 w-4 text-muted-foreground" /> Date of Trip
+                     <CalendarIcon className="h-4 w-4 text-muted-foreground" /> Fecha del Viaje
                   </FormLabel>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -147,9 +149,9 @@ export default function PublishTripPage() {
                           )}
                         >
                           {field.value ? (
-                            format(field.value, "PPP")
+                            format(field.value, "PPP", { locale: es })
                           ) : (
-                            <span>Pick a date</span>
+                            <span>Elige una fecha</span>
                           )}
                           <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                         </Button>
@@ -160,8 +162,9 @@ export default function PublishTripPage() {
                         mode="single"
                         selected={field.value}
                         onSelect={field.onChange}
-                        disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) } // Disable past dates
+                        disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) } 
                         initialFocus
+                        locale={es}
                       />
                     </PopoverContent>
                   </Popover>
@@ -176,20 +179,20 @@ export default function PublishTripPage() {
               render={({ field }) => (
                 <FormItem>
                   <FormLabel className="flex items-center gap-1">
-                    <Users className="h-4 w-4 text-muted-foreground" /> Available Seats
+                    <Users className="h-4 w-4 text-muted-foreground" /> Asientos Disponibles
                   </FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="e.g., 2" {...field} min="1" max="10" />
+                    <Input type="number" placeholder="ej: 2" {...field} min="1" max="10" />
                   </FormControl>
                   <FormDescription>
-                    Enter the number of seats you are offering for this trip.
+                    Ingresa el número de asientos que ofreces para este viaje.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
               )}
             />
             <Button type="submit" className="w-full md:w-auto" size="lg" disabled={isSubmitting}>
-              {isSubmitting ? "Publishing..." : "Publish Trip"}
+              {isSubmitting ? "Publicando..." : "Publicar Viaje"}
             </Button>
           </form>
         </Form>

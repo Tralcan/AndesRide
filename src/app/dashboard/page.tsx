@@ -1,3 +1,4 @@
+
 // src/app/dashboard/page.tsx
 "use client";
 
@@ -14,9 +15,9 @@ export default function DashboardPage() {
 
   const getGreeting = () => {
     const hour = new Date().getHours();
-    if (hour < 12) return "Good Morning";
-    if (hour < 18) return "Good Afternoon";
-    return "Good Evening";
+    if (hour < 12) return "Buenos Días";
+    if (hour < 18) return "Buenas Tardes";
+    return "Buenas Noches";
   };
 
   return (
@@ -29,7 +30,7 @@ export default function DashboardPage() {
                 {getGreeting()}, {user?.name}!
               </CardTitle>
               <CardDescription className="text-lg text-muted-foreground mt-1">
-                Welcome back to {APP_NAME}. Ready for your next journey?
+                Bienvenido de nuevo a {APP_NAME}. ¿Listo para tu próximo viaje?
               </CardDescription>
             </div>
             <div className="p-3 bg-primary/10 rounded-full">
@@ -44,7 +45,7 @@ export default function DashboardPage() {
         <CardContent>
            <Image 
             src="https://placehold.co/1200x400.png" 
-            alt="Andes mountains scenic view" 
+            alt="Vista panorámica de los Andes" 
             width={1200} 
             height={400} 
             className="rounded-lg object-cover w-full"
@@ -59,15 +60,15 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <PlusCircle className="h-6 w-6 text-accent" />
-                Publish a New Trip
+                Publicar un Nuevo Viaje
               </CardTitle>
               <CardDescription>
-                Offer a ride to fellow travelers. Set your route, date, and available seats.
+                Ofrece un viaje a otros viajeros. Define tu ruta, fecha y asientos disponibles.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button asChild size="lg" className="w-full sm:w-auto">
-                <Link href="/dashboard/driver/publish-trip">Create Trip</Link>
+                <Link href="/dashboard/driver/publish-trip">Crear Viaje</Link>
               </Button>
             </CardContent>
           </Card>
@@ -78,15 +79,15 @@ export default function DashboardPage() {
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-xl">
                 <Search className="h-6 w-6 text-accent" />
-                Find a Ride
+                Encontrar un Viaje
               </CardTitle>
               <CardDescription>
-                Search for available trips based on your preferred origin, destination, and date.
+                Busca viajes disponibles según tu origen, destino y fecha preferidos.
               </CardDescription>
             </CardHeader>
             <CardContent>
               <Button asChild size="lg" className="w-full sm:w-auto">
-                <Link href="/dashboard/passenger/search-trips">Search Trips</Link>
+                <Link href="/dashboard/passenger/search-trips">Buscar Viajes</Link>
               </Button>
             </CardContent>
           </Card>
@@ -95,17 +96,17 @@ export default function DashboardPage() {
         <Card className="hover:shadow-xl transition-shadow">
           <CardHeader>
             <CardTitle className="text-xl">
-              {role === ROLES.DRIVER ? "Manage Your Trips" : "Your Bookings"}
+              {role === ROLES.DRIVER ? "Gestionar Tus Viajes" : "Tus Reservas"}
             </CardTitle>
             <CardDescription>
               {role === ROLES.DRIVER
-                ? "View and manage your published trips and passenger requests."
-                : "Keep track of your requested and confirmed rides."}
+                ? "Visualiza y gestiona tus viajes publicados y las solicitudes de los pasajeros."
+                : "Lleva un registro de tus viajes solicitados y confirmados."}
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button variant="outline" size="lg" className="w-full sm:w-auto" disabled>
-              View Details (Coming Soon)
+              Ver Detalles (Próximamente)
             </Button>
           </CardContent>
         </Card>

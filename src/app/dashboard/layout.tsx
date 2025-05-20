@@ -1,3 +1,4 @@
+
 // src/app/dashboard/layout.tsx
 "use client";
 
@@ -41,10 +42,7 @@ export default function DashboardLayout({
     <SidebarProvider>
       <div className="flex min-h-screen w-full flex-col bg-muted/40">
         <AppSidebar />
-        <div className="flex flex-col sm:gap-4 sm:py-4 sm:pl-14 md:pl-0 md:peer-data-[collapsible=icon]:pl-14">
-           {/* The sm:pl-14 is for when sidebar is collapsed to icon on smaller screens,
-               md:pl-0 makes sure it's not applied on md+ unless sidebar is collapsed.
-               md:peer-data-[collapsible=icon]:pl-14 applies padding when sidebar is icon on md+ */}
+        <div className="flex flex-col flex-1 sm:gap-4 sm:py-4">
           <AppHeader />
           <SidebarInset>
             <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">

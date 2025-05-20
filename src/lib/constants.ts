@@ -1,3 +1,4 @@
+
 export const APP_NAME = "AndesRide";
 
 export const LOCATIONS = [
@@ -16,8 +17,8 @@ export const LOCATIONS = [
 export type Location = typeof LOCATIONS[number];
 
 export const ROLES = {
-  DRIVER: "driver",
-  PASSENGER: "passenger",
+  DRIVER: "conductor",
+  PASSENGER: "pasajero",
 } as const;
 
 export type Role = typeof ROLES[keyof typeof ROLES] | null;

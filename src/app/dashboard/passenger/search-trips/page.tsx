@@ -1,3 +1,4 @@
+
 // src/app/dashboard/passenger/search-trips/page.tsx
 "use client";
 
@@ -13,6 +14,7 @@ import { LOCATIONS, Location } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
+import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, SearchIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
@@ -58,8 +60,8 @@ export default function SearchTripsPage() {
       setFilteredTrips(trips);
       setIsLoading(false);
       toast({
-        title: "Search Updated",
-        description: `Found ${trips.length} trip(s) matching your criteria.`,
+        title: "Búsqueda Actualizada",
+        description: `Se encontraron ${trips.length} viaje(s) que coinciden con tus criterios.`,
       });
     }, 500);
   };
@@ -67,8 +69,8 @@ export default function SearchTripsPage() {
   const handleRequestRide = (tripId: string) => {
     const trip = MOCK_TRIPS.find(t => t.id === tripId);
     toast({
-      title: "Ride Requested!",
-      description: `Your request for the trip from ${trip?.origin} to ${trip?.destination} has been sent to ${trip?.driverName}.`,
+      title: "¡Viaje Solicitado!",
+      description: `Tu solicitud para el viaje de ${trip?.origin} a ${trip?.destination} ha sido enviada a ${trip?.driverName}.`,
       variant: "default"
     });
   };
@@ -84,10 +86,10 @@ export default function SearchTripsPage() {
         <CardHeader>
           <div className="flex items-center gap-3 mb-2">
             <SearchIcon className="h-8 w-8 text-primary" />
-            <CardTitle className="text-2xl font-bold">Search for Trips</CardTitle>
+            <CardTitle className="text-2xl font-bold">Buscar Viajes</CardTitle>
           </div>
           <CardDescription>
-            Find available rides by filtering by origin, destination, and date.
+            Encuentra viajes disponibles filtrando por origen, destino y fecha.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -99,11 +101,11 @@ export default function SearchTripsPage() {
                   name="origin"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origin</FormLabel>
+                      <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origen</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Any Origin" />
+                            <SelectValue placeholder="Cualquier Origen" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -122,11 +124,11 @@ export default function SearchTripsPage() {
                   name="destination"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destination</FormLabel>
+                      <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destino</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Any Destination" />
+                            <SelectValue placeholder="Cualquier Destino" />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
@@ -145,7 +147,7 @@ export default function SearchTripsPage() {
                   name="date"
                   render={({ field }) => (
                     <FormItem className="flex flex-col">
-                      <FormLabel className="flex items-center gap-1"><CalendarIcon className="h-4 w-4 text-muted-foreground" /> Date</FormLabel>
+                      <FormLabel className="flex items-center gap-1"><CalendarIcon className="h-4 w-4 text-muted-foreground" /> Fecha</FormLabel>
                       <Popover>
                         <PopoverTrigger asChild>
                           <FormControl>
@@ -156,13 +158,13 @@ export default function SearchTripsPage() {
                                 !field.value && "text-muted-foreground"
                               )}
                             >
-                              {field.value ? format(field.value, "PPP") : <span>Any Date</span>}
+                              {field.value ? format(field.value, "PPP", { locale: es }) : <span>Cualquier Fecha</span>}
                               <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus />
+                          <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={es} />
                         </PopoverContent>
                       </Popover>
                     </FormItem>
@@ -171,10 +173,10 @@ export default function SearchTripsPage() {
               </div>
               <div className="flex justify-end gap-2">
                 <Button type="button" variant="outline" onClick={() => {form.reset(); setFilteredTrips(MOCK_TRIPS);}} disabled={isLoading}>
-                  Clear Filters
+                  Limpiar Filtros
                 </Button>
                 <Button type="submit" disabled={isLoading}>
-                  {isLoading ? "Searching..." : "Search Trips"}
+                  {isLoading ? "Buscando..." : "Buscar Viajes"}
                 </Button>
               </div>
             </form>
@@ -205,9 +207,9 @@ export default function SearchTripsPage() {
         <Card className="text-center py-12">
           <CardContent>
             <SearchIcon className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No Trips Found</h3>
+            <h3 className="text-xl font-semibold mb-2">No se Encontraron Viajes</h3>
             <p className="text-muted-foreground">
-              Try adjusting your search filters or check back later.
+              Intenta ajustar tus filtros de búsqueda o vuelve más tarde.
             </p>
           </CardContent>
         </Card>

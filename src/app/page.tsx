@@ -1,3 +1,4 @@
+
 // src/app/page.tsx
 "use client";
 
@@ -17,10 +18,10 @@ export default function LoginPage() {
           <Logo size="lg" className="justify-center mb-8" />
           
           <h1 className="text-3xl sm:text-4xl font-bold text-foreground mb-3">
-            Welcome to AndesRide
+            Bienvenido a AndesRide
           </h1>
           <p className="text-muted-foreground mb-10 text-base sm:text-lg">
-            Your trusted companion for journeys through the mountains and beyond.
+            Tu compañero de confianza para viajes a través de las montañas y más allá.
           </p>
           
           <Button 
@@ -28,18 +29,18 @@ export default function LoginPage() {
             disabled={isLoading}
             size="lg" 
             className="w-full text-lg py-7 rounded-lg shadow-md hover:shadow-lg transition-shadow"
-            aria-label="Sign in with Google"
+            aria-label="Iniciar sesión con Google"
           >
             <Chrome className="mr-3 h-6 w-6" />
-            {isLoading ? "Signing in..." : "Sign in with Google"}
+            {isLoading ? "Iniciando sesión..." : "Iniciar sesión con Google"}
           </Button>
 
           <p className="mt-8 text-sm text-muted-foreground">
-            By signing in, you agree to our Terms of Service and Privacy Policy.
+            Al iniciar sesión, aceptas nuestros Términos de Servicio y Política de Privacidad.
           </p>
         </div>
         <footer className="mt-12 text-center text-muted-foreground text-sm">
-          © {new Date().getFullYear()} AndesRide. All rights reserved.
+          © {new Date().getFullYear()} AndesRide. Todos los derechos reservados.
         </footer>
       </main>
     </AuthRedirector>

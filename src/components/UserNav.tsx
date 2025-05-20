@@ -1,3 +1,4 @@
+
 // src/components/UserNav.tsx
 "use client";
 
@@ -56,22 +57,22 @@ export function UserNav() {
           <DropdownMenuItem asChild>
             <Link href="/dashboard">
               <LayoutDashboard className="mr-2 h-4 w-4" />
-              <span>Dashboard</span>
+              <span>Panel</span>
             </Link>
           </DropdownMenuItem>
           <DropdownMenuItem disabled>
             <User className="mr-2 h-4 w-4" />
-            <span>Profile</span>
+            <span>Perfil</span>
           </DropdownMenuItem>
           <DropdownMenuItem disabled>
             <Settings className="mr-2 h-4 w-4" />
-            <span>Settings</span>
+            <span>Configuración</span>
           </DropdownMenuItem>
         </DropdownMenuGroup>
         <DropdownMenuSeparator />
         <DropdownMenuItem onClick={logout}>
           <LogOut className="mr-2 h-4 w-4" />
-          <span>Log out</span>
+          <span>Cerrar Sesión</span>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>

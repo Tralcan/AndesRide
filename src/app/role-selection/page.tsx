@@ -1,3 +1,4 @@
+
 // src/app/role-selection/page.tsx
 "use client";
 
@@ -26,7 +27,7 @@ export default function RoleSelectionPage() {
   if (isLoading || !isAuthenticated || role) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">Cargando...</p>
       </div>
     );
   }
@@ -34,15 +35,15 @@ export default function RoleSelectionPage() {
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-secondary p-6">
       <div className="absolute top-6 right-6">
-        <Button variant="ghost" onClick={logout} aria-label="Logout">
-          <LogOut className="mr-2 h-5 w-5" /> Logout
+        <Button variant="ghost" onClick={logout} aria-label="Cerrar sesión">
+          <LogOut className="mr-2 h-5 w-5" /> Cerrar Sesión
         </Button>
       </div>
       <div className="w-full max-w-lg text-center">
         <Logo size="lg" className="justify-center mb-6" />
-        <h1 className="text-3xl font-bold text-foreground mb-2">Choose Your Role</h1>
+        <h1 className="text-3xl font-bold text-foreground mb-2">Elige Tu Rol</h1>
         <p className="text-muted-foreground mb-8">
-          Hi {user?.name}! How will you be using AndesRide today?
+          ¡Hola {user?.name}! ¿Cómo usarás AndesRide hoy?
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -51,15 +52,15 @@ export default function RoleSelectionPage() {
             onClick={() => setRole(ROLES.DRIVER)}
             tabIndex={0}
             onKeyPress={(e) => e.key === 'Enter' && setRole(ROLES.DRIVER)}
-            aria-label="Select Driver Role"
+            aria-label="Seleccionar Rol de Conductor"
           >
             <CardHeader className="items-center">
               <Car className="h-12 w-12 text-primary mb-2" />
-              <CardTitle className="text-2xl">I'm a Driver</CardTitle>
+              <CardTitle className="text-2xl">Soy Conductor</CardTitle>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                Offer rides, manage your trips, and connect with passengers.
+                Ofrece viajes, gestiona tus rutas y conecta con pasajeros.
               </CardDescription>
             </CardContent>
           </Card>
@@ -69,22 +70,22 @@ export default function RoleSelectionPage() {
             onClick={() => setRole(ROLES.PASSENGER)}
             tabIndex={0}
             onKeyPress={(e) => e.key === 'Enter' && setRole(ROLES.PASSENGER)}
-            aria-label="Select Passenger Role"
+            aria-label="Seleccionar Rol de Pasajero"
           >
             <CardHeader className="items-center">
               <User className="h-12 w-12 text-primary mb-2" />
-              <CardTitle className="text-2xl">I'm a Passenger</CardTitle>
+              <CardTitle className="text-2xl">Soy Pasajero</CardTitle>
             </CardHeader>
             <CardContent>
               <CardDescription>
-                Find rides, request seats, and travel conveniently.
+                Encuentra viajes, solicita asientos y viaja cómodamente.
               </CardDescription>
             </CardContent>
           </Card>
         </div>
       </div>
        <footer className="mt-12 text-center text-muted-foreground text-sm">
-          © {new Date().getFullYear()} AndesRide. All rights reserved.
+          © {new Date().getFullYear()} AndesRide. Todos los derechos reservados.
         </footer>
     </main>
   );

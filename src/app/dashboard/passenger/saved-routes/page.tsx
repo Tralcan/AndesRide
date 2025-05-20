@@ -1,10 +1,11 @@
+
 // src/app/dashboard/passenger/saved-routes/page.tsx
 "use client";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
@@ -13,6 +14,7 @@ import { LOCATIONS, Location } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
+import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, BookmarkPlus, BellRing, Trash2, Route } from "lucide-react";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
@@ -21,14 +23,14 @@ import { watchRoute, type WatchRouteInput } from "@/ai/flows/route-watcher"; // 
 
 const SavedRouteSchema = z.object({
   origin: z.custom<Location>((val) => LOCATIONS.includes(val as Location), {
-    message: "Please select a valid origin.",
+    message: "Por favor selecciona un origen válido.",
   }),
   destination: z.custom<Location>((val) => LOCATIONS.includes(val as Location), {
-    message: "Please select a valid destination.",
+    message: "Por favor selecciona un destino válido.",
   }),
-  date: z.date().optional(), // Date is optional for a saved route preference
+  date: z.date().optional(), 
 }).refine(data => data.origin !== data.destination, {
-  message: "Origin and destination cannot be the same.",
+  message: "El origen y el destino no pueden ser iguales.",
   path: ["destination"],
 });
 
@@ -48,7 +50,7 @@ export default function SavedRoutesPage() {
 
   async function onSubmit(data: z.infer<typeof SavedRouteSchema>) {
     if (!user?.email) {
-      toast({ title: "Error", description: "User email not found. Please log in again.", variant: "destructive" });
+      toast({ title: "Error", description: "Email del usuario no encontrado. Por favor, inicia sesión de nuevo.", variant: "destructive" });
       return;
     }
     setIsSubmitting(true);
@@ -58,37 +60,32 @@ export default function SavedRoutesPage() {
     form.reset();
     
     toast({
-      title: "Route Saved!",
-      description: `Route from ${data.origin} to ${data.destination} saved. We'll notify you of matching trips.`,
+      title: "¡Ruta Guardada!",
+      description: `Ruta de ${data.origin} a ${data.destination} guardada. Te notificaremos sobre viajes coincidentes.`,
       variant: "default"
     });
 
-    // Call the GenAI Route Watcher
     try {
       const watchInput: WatchRouteInput = {
         passengerEmail: user.email,
         origin: data.origin,
         destination: data.destination,
-        date: data.date ? format(data.date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"), // Provide a date; current if not specified
+        date: data.date ? format(data.date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
       };
       
-      // Intentionally not awaiting this for a background "watching" feel
       watchRoute(watchInput).then(output => {
-        // This is a conceptual notification. In a real app, the AI might trigger
-        // a backend process that sends emails/push notifications later.
-        // For now, we'll show a toast based on the immediate (simulated) response.
         if (output.routeMatchFound) {
            toast({
-            title: "Route Watcher Active!",
+            title: "¡Vigilante de Ruta Activo!",
             description: output.message,
             variant: output.notificationSent ? "default" : "destructive",
             duration: 7000,
-            action: output.notificationSent ? <Button variant="outline" size="sm" onClick={() => console.log("Notification action clicked")}>View Matches</Button> : undefined
+            action: output.notificationSent ? <Button variant="outline" size="sm" onClick={() => console.log("Notification action clicked")}>Ver Coincidencias</Button> : undefined
           });
         } else {
            toast({
-            title: "Route Watcher Update",
-            description: output.message || "Monitoring your saved route for new trips.",
+            title: "Actualización del Vigilante de Ruta",
+            description: output.message || "Monitoreando tu ruta guardada para nuevos viajes.",
             variant: "default",
             duration: 5000
           });
@@ -96,8 +93,8 @@ export default function SavedRoutesPage() {
       }).catch(error => {
         console.error("Error calling watchRoute:", error);
         toast({
-          title: "Route Watcher Error",
-          description: "Could not start watching the route. Please try again.",
+          title: "Error del Vigilante de Ruta",
+          description: "No se pudo comenzar a vigilar la ruta. Por favor, inténtalo de nuevo.",
           variant: "destructive",
         });
       });
@@ -106,7 +103,7 @@ export default function SavedRoutesPage() {
       console.error("Error setting up route watcher:", error);
       toast({
         title: "Error",
-        description: "Failed to set up route watcher.",
+        description: "No se pudo configurar el vigilante de ruta.",
         variant: "destructive",
       });
     } finally {
@@ -116,7 +113,7 @@ export default function SavedRoutesPage() {
   
   const removeRoute = (id: string) => {
     setSavedRoutes(prev => prev.filter(route => route.id !== id));
-    toast({ title: "Route Removed", description: "The saved route has been removed." });
+    toast({ title: "Ruta Eliminada", description: "La ruta guardada ha sido eliminada." });
   };
 
   return (
@@ -125,10 +122,10 @@ export default function SavedRoutesPage() {
         <CardHeader>
           <div className="flex items-center gap-3 mb-2">
             <BookmarkPlus className="h-8 w-8 text-primary" />
-            <CardTitle className="text-2xl font-bold">Save a Preferred Route</CardTitle>
+            <CardTitle className="text-2xl font-bold">Guardar Ruta Preferida</CardTitle>
           </div>
           <CardDescription>
-            Save your frequent routes and get notified by our AI Route Watcher when matching trips are posted.
+            Guarda tus rutas frecuentes y recibe notificaciones de nuestro Vigilante de Rutas IA cuando se publiquen viajes coincidentes.
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -140,9 +137,9 @@ export default function SavedRoutesPage() {
                   name="origin"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origin</FormLabel>
+                      <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origen</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select origin" /></SelectTrigger></FormControl>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona origen" /></SelectTrigger></FormControl>
                         <SelectContent>{LOCATIONS.map(loc => <SelectItem key={`sro-${loc}`} value={loc}>{loc}</SelectItem>)}</SelectContent>
                       </Select>
                       <FormMessage />
@@ -154,9 +151,9 @@ export default function SavedRoutesPage() {
                   name="destination"
                   render={({ field }) => (
                     <FormItem>
-                      <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destination</FormLabel>
+                      <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destino</FormLabel>
                       <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Select destination" /></SelectTrigger></FormControl>
+                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona destino" /></SelectTrigger></FormControl>
                         <SelectContent>{LOCATIONS.map(loc => <SelectItem key={`srd-${loc}`} value={loc}>{loc}</SelectItem>)}</SelectContent>
                       </Select>
                       <FormMessage />
@@ -169,28 +166,28 @@ export default function SavedRoutesPage() {
                 name="date"
                 render={({ field }) => (
                   <FormItem className="flex flex-col">
-                    <FormLabel className="flex items-center gap-1"><CalendarIcon className="h-4 w-4 text-muted-foreground" /> Preferred Date (Optional)</FormLabel>
+                    <FormLabel className="flex items-center gap-1"><CalendarIcon className="h-4 w-4 text-muted-foreground" /> Fecha Preferida (Opcional)</FormLabel>
                     <Popover>
                       <PopoverTrigger asChild>
                         <FormControl>
                           <Button variant="outline" className={cn("w-full pl-3 text-left font-normal", !field.value && "text-muted-foreground")}>
-                            {field.value ? format(field.value, "PPP") : <span>Any date</span>}
+                            {field.value ? format(field.value, "PPP", { locale: es }) : <span>Cualquier fecha</span>}
                             <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                           </Button>
                         </FormControl>
                       </PopoverTrigger>
                       <PopoverContent className="w-auto p-0" align="start">
                         <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus 
-                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} />
+                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0))} locale={es} />
                       </PopoverContent>
                     </Popover>
-                    <FormDescription>Leave blank to be notified for any date.</FormDescription>
+                    <FormDescription>Deja en blanco para recibir notificaciones para cualquier fecha.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
               />
               <Button type="submit" className="w-full md:w-auto" size="lg" disabled={isSubmitting}>
-                <BellRing className="mr-2 h-5 w-5" /> {isSubmitting ? "Saving..." : "Save Route & Watch"}
+                <BellRing className="mr-2 h-5 w-5" /> {isSubmitting ? "Guardando..." : "Guardar Ruta y Vigilar"}
               </Button>
             </form>
           </Form>
@@ -200,7 +197,7 @@ export default function SavedRoutesPage() {
       {savedRoutes.length > 0 && (
         <Card className="shadow-xl">
           <CardHeader>
-            <CardTitle className="text-xl font-semibold">Your Saved Routes</CardTitle>
+            <CardTitle className="text-xl font-semibold">Tus Rutas Guardadas</CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
             {savedRoutes.map(route => (
@@ -208,13 +205,13 @@ export default function SavedRoutesPage() {
                 <div className="flex items-center gap-3">
                   <Route className="h-6 w-6 text-primary"/>
                   <div>
-                    <p className="font-medium">{route.origin} to {route.destination}</p>
+                    <p className="font-medium">{route.origin} a {route.destination}</p>
                     <p className="text-sm text-muted-foreground">
-                      Date: {route.date ? format(route.date, "PPP") : "Any"}
+                      Fecha: {route.date ? format(route.date, "PPP", { locale: es }) : "Cualquiera"}
                     </p>
                   </div>
                 </div>
-                <Button variant="ghost" size="icon" onClick={() => removeRoute(route.id)} aria-label="Remove saved route">
+                <Button variant="ghost" size="icon" onClick={() => removeRoute(route.id)} aria-label="Eliminar ruta guardada">
                   <Trash2 className="h-5 w-5 text-destructive" />
                 </Button>
               </div>
