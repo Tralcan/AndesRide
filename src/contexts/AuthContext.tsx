@@ -7,6 +7,7 @@ import type { AuthError, Session, User as SupabaseUser } from "@supabase/supabas
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactNode, SetStateAction} from "react";
 import { createContext, useState, useEffect, useCallback } from "react";
+import { useToast } from "@/hooks/use-toast";
 
 interface UserProfile {
   id: string;
@@ -22,13 +23,13 @@ interface User extends SupabaseUser {
 
 interface AuthContextType {
   user: User | null;
-  role: Role | null; // Mantenemos role aquí para acceso rápido, derivado de user.profile.role
+  role: Role | null; 
   isAuthenticated: boolean;
   isLoading: boolean;
   login: () => Promise<{ error: AuthError | null }>;
   logout: () => Promise<{ error: AuthError | null }>;
   setRole: (newRole: Role) => Promise<void>;
-  setUser: Dispatch<SetStateAction<User | null>>; // Se mantiene por compatibilidad, pero idealmente se gestiona internamente
+  setUser: Dispatch<SetStateAction<User | null>>;
   session: Session | null;
 }
 
@@ -40,19 +41,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRoleState] = useState<Role>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
+  const { toast } = useToast();
 
   const fetchUserProfile = useCallback(async (supabaseUser: SupabaseUser): Promise<UserProfile | null> => {
+    console.log("Fetching profile for user:", supabaseUser.id);
     const { data, error } = await supabase
       .from("profiles")
       .select("id, full_name, avatar_url, role")
       .eq("id", supabaseUser.id)
       .single();
 
-    if (error && error.code !== 'PGRST116') { // PGRST116: 'No rows found'
+    if (error && error.code !== 'PGRST116') { 
       console.error("Error fetching user profile:", error);
+      toast({
+        title: "Error de Perfil",
+        description: "No se pudo cargar tu perfil de usuario.",
+        variant: "destructive",
+      });
       return null;
     }
     if (data) {
+      console.log("Profile data found:", data);
       return {
         id: data.id,
         fullName: data.full_name,
@@ -60,98 +69,132 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         role: data.role as Role,
       };
     }
+    console.log("No profile data found for user:", supabaseUser.id);
     return null;
-  }, []);
+  }, [toast]);
 
   useEffect(() => {
     setIsLoading(true);
+    console.log("AuthProvider: Initializing, checking session.");
     supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
+      console.log("AuthProvider: Initial session:", currentSession);
       setSession(currentSession);
       if (currentSession?.user) {
         const profile = await fetchUserProfile(currentSession.user);
         setUser({ ...currentSession.user, profile });
         if (profile?.role) {
           setRoleState(profile.role);
-        } else if (profile) { // Perfil existe pero sin rol
-          // No redirigir aún, esperar a onAuthStateChange o AuthRedirector
         }
       }
       setIsLoading(false);
+      console.log("AuthProvider: Initial loading complete.");
     });
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
+        console.log('AuthProvider: Auth event:', event, 'New session:', newSession);
         setIsLoading(true);
-        setSession(newSession);
-        if (newSession?.user) {
-          const profile = await fetchUserProfile(newSession.user);
-          setUser({ ...newSession.user, profile });
-          if (profile?.role) {
-            setRoleState(profile.role);
-            // Si estamos en role-selection y ya tenemos rol, redirigimos
-            if (window.location.pathname === '/role-selection') {
-              router.replace("/dashboard");
+        try {
+          setSession(newSession);
+          if (newSession?.user) {
+            const profile = await fetchUserProfile(newSession.user);
+            console.log('AuthProvider: Fetched profile after auth change:', profile);
+            setUser({ ...newSession.user, profile });
+            if (profile?.role) {
+              setRoleState(profile.role);
+              if (window.location.pathname === '/role-selection') {
+                console.log('AuthProvider: Redirecting to /dashboard from role-selection (role found)');
+                router.replace("/dashboard");
+              }
+            } else if (profile && window.location.pathname !== '/role-selection' && window.location.pathname !== '/') {
+              console.log('AuthProvider: Redirecting to /role-selection (profile found, no role)');
+              router.replace("/role-selection");
+            } else if (!profile && event === 'SIGNED_IN') {
+               console.warn('AuthProvider: User signed in but profile not found immediately. Redirecting to /role-selection.');
+               router.replace("/role-selection");
             }
-          } else if (profile && window.location.pathname !== '/role-selection' && window.location.pathname !== '/') {
-             // Perfil existe, pero sin rol, y no estamos en login o seleccion de rol
-            router.replace("/role-selection");
-          } else if (!profile && event === 'SIGNED_IN') {
-            // Esto podría pasar si el trigger de Supabase tarda o falla.
-            // Idealmente, el trigger handle_new_user crea el perfil.
-            // Si no, el usuario se queda atascado sin perfil.
-            // Considerar crear perfil aquí si no existe, aunque el trigger es mejor.
-             console.warn('User signed in but profile not found immediately. Waiting for role selection or trigger.');
-             router.replace("/role-selection"); // Forzar a role-selection para crear/completar perfil
+          } else {
+            console.log('AuthProvider: No user in session, clearing user state.');
+            setUser(null);
+            setRoleState(null);
+             if (window.location.pathname !== '/') {
+              console.log('AuthProvider: Redirecting to / (no session, not on login page)');
+              router.replace("/");
+            }
           }
-        } else {
+        } catch (e: any) {
+          console.error("AuthProvider: Error in onAuthStateChange:", e);
           setUser(null);
           setRoleState(null);
-           if (window.location.pathname !== '/') { // Evitar bucle si ya está en login
-            router.replace("/");
-          }
+          toast({
+            title: "Error de Autenticación",
+            description: e.message || "Ocurrió un error durante el proceso de autenticación. Por favor, intenta de nuevo.",
+            variant: "destructive",
+          });
+        } finally {
+          setIsLoading(false);
+          console.log('AuthProvider: onAuthStateChange finished, isLoading:', false);
         }
-        setIsLoading(false);
       }
     );
 
     return () => {
       authListener?.unsubscribe();
+      console.log("AuthProvider: Unsubscribed from auth changes.");
     };
-  }, [router, fetchUserProfile]);
+  }, [router, fetchUserProfile, toast]);
 
   const login = async () => {
+    console.log("AuthProvider: Attempting login with Google.");
     setIsLoading(true);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
         // redirectTo se configura en el dashboard de Supabase
-        // redirectTo: `${window.location.origin}/auth/callback` // Opcional si se quiere especificar aquí
+        // Si necesitas especificarlo aquí, asegúrate que coincida con tu dashboard Supabase y Google Cloud Console
+        // redirectTo: `${window.location.origin}/auth/callback` 
       },
     });
     if (error) {
-      console.error("Error al iniciar sesión con Google:", error);
+      console.error("AuthProvider: Error during signInWithOAuth:", error);
+      toast({
+        title: "Error de inicio de sesión",
+        description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
+        variant: "destructive",
+      });
       setIsLoading(false);
     }
-    // No setIsLoading(false) aquí porque onAuthStateChange manejará el estado post-redirect
+    // No setIsLoading(false) aquí si el redirect se inicia, onAuthStateChange lo manejará.
     return { error };
   };
 
   const logout = async () => {
+    console.log("AuthProvider: Attempting logout.");
     setIsLoading(true);
     const { error } = await supabase.auth.signOut();
-    if (error) console.error("Error al cerrar sesión:", error);
-    //setUser(null); // onAuthStateChange lo hará
-    //setRoleState(null); // onAuthStateChange lo hará
-    //router.push("/"); // onAuthStateChange lo hará
-    // setIsLoading(false); // onAuthStateChange lo hará
+    if (error) {
+      console.error("AuthProvider: Error during signOut:", error);
+      toast({
+        title: "Error al cerrar sesión",
+        description: error.message || "No se pudo cerrar la sesión. Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    }
+    // onAuthStateChange se encargará de limpiar el estado y redirigir.
     return { error };
   };
 
   const setRoleAndUpdateProfile = async (newRole: Role) => {
     if (!user?.id || !newRole) {
-      console.error("Usuario no autenticado o rol no válido para actualizar.");
+      console.error("AuthProvider: User not authenticated or invalid role for update.");
+      toast({
+        title: "Error",
+        description: "Usuario no autenticado o rol no válido.",
+        variant: "destructive"
+      });
       return;
     }
+    console.log(`AuthProvider: Setting role to ${newRole} for user ${user.id}`);
     setIsLoading(true);
     try {
       const { data: profileData, error: profileError } = await supabase
@@ -166,12 +209,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
 
       if (profileData) {
+        console.log("AuthProvider: Profile updated successfully with new role:", profileData);
         setRoleState(newRole);
-        // Actualizar el perfil del usuario en el estado local
         setUser(currentUser => currentUser ? ({
             ...currentUser,
             profile: {
-                ...currentUser.profile!, // Asumimos que el perfil base ya existe
+                ...currentUser.profile!, 
                 id: profileData.id,
                 fullName: profileData.full_name,
                 avatarUrl: profileData.avatar_url,
@@ -180,9 +223,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }) : null);
         router.push("/dashboard");
       }
-    } catch (error) {
-      console.error("Error al establecer el rol:", error);
-      // Aquí podrías mostrar un toast al usuario
+    } catch (error: any) {
+      console.error("AuthProvider: Error setting role:", error);
+      toast({
+        title: "Error al Establecer Rol",
+        description: error.message || "No se pudo actualizar tu rol. Inténtalo de nuevo.",
+        variant: "destructive",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -193,12 +240,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         role,
-        isAuthenticated: !!user && !!session, // Un usuario está autenticado si hay user y session
+        isAuthenticated: !!user && !!session,
         isLoading,
         login,
         logout,
         setRole: setRoleAndUpdateProfile,
-        setUser, // Se mantiene por si se necesita, pero las actualizaciones principales son internas
+        setUser, 
         session,
       }}
     >
