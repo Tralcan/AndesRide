@@ -23,4 +23,6 @@ export const ROLES = {
 
 export type Role = typeof ROLES[keyof typeof ROLES] | null;
 
-export const DEFAULT_USER_EMAIL = "testuser@example.com";
+// DEFAULT_USER_EMAIL ya no es necesario con Supabase Auth
+// export const DEFAULT_USER_EMAIL = "testuser@example.com";
+

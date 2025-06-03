@@ -1,4 +1,3 @@
-
 // src/components/layout/AppSidebar.tsx
 "use client";
 
@@ -14,7 +13,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES } from "@/lib/constants";
-import { LayoutDashboard, Car, PlusCircle, Search, Bookmark, UserCircle } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle } from "lucide-react"; // Car icon was here, but not used in links
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -37,6 +36,7 @@ export function AppSidebar() {
 
   const links = role === ROLES.DRIVER ? driverLinks : passengerLinks;
   const roleName = role === ROLES.DRIVER ? "Conductor" : "Pasajero";
+  const displayName = user?.profile?.fullName || user?.email || "Usuario";
 
   return (
     <Sidebar collapsible="offcanvas" variant="sidebar" side="left">
@@ -86,8 +86,8 @@ export function AppSidebar() {
           <div className="flex items-center gap-2 group-data-[collapsible=icon]:justify-center">
             <UserCircle className="h-6 w-6 text-muted-foreground"/>
             <div className="group-data-[collapsible=icon]:hidden">
-              <p className="text-sm font-medium text-foreground truncate">{user?.name}</p>
-              <p className="text-xs text-muted-foreground capitalize truncate">{roleName}</p>
+              <p className="text-sm font-medium text-foreground truncate">{displayName}</p>
+              <p className="text-xs text-muted-foreground capitalize truncate">{roleName || "Cargando rol..."}</p>
             </div>
           </div>
       </SidebarFooter>

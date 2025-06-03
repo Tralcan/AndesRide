@@ -1,4 +1,3 @@
-
 // src/app/page.tsx
 "use client";
 
@@ -6,10 +5,24 @@ import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { AuthRedirector } from "@/components/auth/AuthRedirector";
 import { useAuth } from "@/hooks/useAuth";
-import { Chrome } from "lucide-react"; // Using Chrome icon as a generic "Google" icon
+import { Chrome } from "lucide-react"; // Usando Chrome como icono genérico para "Google"
+import { useToast } from "@/hooks/use-toast";
 
 export default function LoginPage() {
   const { login, isLoading } = useAuth();
+  const { toast } = useToast();
+
+  const handleLogin = async () => {
+    const { error } = await login();
+    if (error) {
+      toast({
+        title: "Error de inicio de sesión",
+        description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
+        variant: "destructive",
+      });
+    }
+    // La redirección y el estado de carga son manejados por AuthContext y AuthRedirector
+  };
 
   return (
     <AuthRedirector>
@@ -25,7 +38,7 @@ export default function LoginPage() {
           </p>
           
           <Button 
-            onClick={login} 
+            onClick={handleLogin} 
             disabled={isLoading}
             size="lg" 
             className="w-full text-lg py-7 rounded-lg shadow-md hover:shadow-lg transition-shadow"

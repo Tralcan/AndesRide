@@ -1,4 +1,3 @@
-
 // src/app/role-selection/page.tsx
 "use client";
 
@@ -6,36 +5,50 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
-import { ROLES } from "@/lib/constants";
+import { ROLES, Role as RoleType } from "@/lib/constants";
 import { Car, User, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
+import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
 
 export default function RoleSelectionPage() {
   const { user, role, setRole, isLoading, logout, isAuthenticated } = useAuth();
   const router = useRouter();
 
   useEffect(() => {
-    if (!isLoading && !isAuthenticated) {
-      router.replace("/"); // Redirect to login if not authenticated
-    }
-    if (!isLoading && isAuthenticated && role) {
-      router.replace("/dashboard"); // Redirect to dashboard if role already set
+    if (!isLoading) {
+      if (!isAuthenticated) {
+        router.replace("/"); // Redirigir a login si no está autenticado
+      } else if (role) {
+        router.replace("/dashboard"); // Redirigir a dashboard si el rol ya está establecido
+      }
     }
   }, [isLoading, isAuthenticated, role, router]);
 
   if (isLoading || !isAuthenticated || role) {
+    // Mostrar un esqueleto o un mensaje de carga más elaborado
     return (
-      <div className="flex items-center justify-center min-h-screen bg-background">
-        <p className="text-muted-foreground">Cargando...</p>
+      <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
+        <Skeleton className="h-12 w-12 rounded-full mb-4" />
+        <Skeleton className="h-8 w-48 mb-2" />
+        <Skeleton className="h-4 w-32" />
+        <p className="text-muted-foreground mt-4">Cargando...</p>
       </div>
     );
   }
+  
+  const handleSetRole = async (selectedRole: RoleType) => {
+    if (selectedRole) {
+      await setRole(selectedRole);
+      // La redirección es manejada dentro de setRole en AuthContext
+    }
+  };
+
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-secondary p-6">
       <div className="absolute top-6 right-6">
-        <Button variant="ghost" onClick={logout} aria-label="Cerrar sesión">
+        <Button variant="ghost" onClick={logout} aria-label="Cerrar sesión" disabled={isLoading}>
           <LogOut className="mr-2 h-5 w-5" /> Cerrar Sesión
         </Button>
       </div>
@@ -43,15 +56,15 @@ export default function RoleSelectionPage() {
         <Logo size="lg" className="justify-center mb-6" />
         <h1 className="text-3xl font-bold text-foreground mb-2">Elige Tu Rol</h1>
         <p className="text-muted-foreground mb-8">
-          ¡Hola {user?.name}! ¿Cómo usarás AndesRide hoy?
+          ¡Hola {user?.profile?.fullName || user?.email}! ¿Cómo usarás AndesRide hoy?
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card 
             className="hover:shadow-xl transition-shadow cursor-pointer hover:border-primary"
-            onClick={() => setRole(ROLES.DRIVER)}
+            onClick={() => handleSetRole(ROLES.DRIVER)}
             tabIndex={0}
-            onKeyPress={(e) => e.key === 'Enter' && setRole(ROLES.DRIVER)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSetRole(ROLES.DRIVER)}
             aria-label="Seleccionar Rol de Conductor"
           >
             <CardHeader className="items-center">
@@ -67,9 +80,9 @@ export default function RoleSelectionPage() {
 
           <Card 
             className="hover:shadow-xl transition-shadow cursor-pointer hover:border-primary"
-            onClick={() => setRole(ROLES.PASSENGER)}
+            onClick={() => handleSetRole(ROLES.PASSENGER)}
             tabIndex={0}
-            onKeyPress={(e) => e.key === 'Enter' && setRole(ROLES.PASSENGER)}
+            onKeyPress={(e) => e.key === 'Enter' && handleSetRole(ROLES.PASSENGER)}
             aria-label="Seleccionar Rol de Pasajero"
           >
             <CardHeader className="items-center">
