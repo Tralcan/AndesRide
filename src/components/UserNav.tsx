@@ -24,12 +24,18 @@ export function UserNav() {
     return null; 
   }
 
-  const displayName = user.profile?.fullName || user.email || "Usuario";
+  const displayName = user.profile?.fullName || user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Usuario";
   const displayAvatar = user.profile?.avatarUrl || user.user_metadata?.avatar_url || "";
   const displayEmail = user.email || "No disponible";
 
   const getInitials = (name: string) => {
-    if (!name) return "?";
+    if (!name || name.includes('@')) { // If name is an email, try to make initials from the part before @
+        const emailPart = name.split('@')[0];
+        if (emailPart.length > 0) {
+            return emailPart.substring(0, Math.min(2, emailPart.length)).toUpperCase();
+        }
+        return "?";
+    }
     const names = name.split(" ");
     let initials = names[0].substring(0, 1).toUpperCase();
     if (names.length > 1) {

@@ -44,6 +44,7 @@ export default function RoleSelectionPage() {
     }
   };
 
+  const displayName = user?.profile?.fullName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-secondary p-6">
@@ -56,7 +57,7 @@ export default function RoleSelectionPage() {
         <Logo size="lg" className="justify-center mb-6" />
         <h1 className="text-3xl font-bold text-foreground mb-2">Elige Tu Rol</h1>
         <p className="text-muted-foreground mb-8">
-          ¡Hola {user?.profile?.fullName || user?.email}! ¿Cómo usarás AndesRide hoy?
+          ¡Hola {displayName}! ¿Cómo usarás AndesRide hoy?
         </p>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
