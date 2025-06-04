@@ -17,7 +17,6 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  // AlertDialogTrigger, // No longer needed here for the trigger itself
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ListChecks, Trash2, Edit3, CalendarDays, Users, MapPin, ArrowRight, Loader2, Frown } from "lucide-react";
@@ -59,20 +58,16 @@ export default function ManageTripsPage() {
   const [tripToDelete, setTripToDelete] = useState<Trip | null>(null);
 
   const fetchTrips = useCallback(async () => {
-    console.log("[ManageTripsPage] fetchTrips called. User available:", !!user, "User ID:", user?.id);
     if (!user?.id) {
-      console.warn("[ManageTripsPage] fetchTrips: User or user.id is not available. Aborting fetch.");
       setError("Usuario no autenticado o ID no disponible para cargar viajes.");
       setIsLoading(false);
       return;
     }
 
-    console.log(`[ManageTripsPage] fetchTrips: Setting isLoading to true for user: ${user.id}`);
     setIsLoading(true);
     setError(null);
 
     try {
-      console.log(`[ManageTripsPage] fetchTrips: Attempting to fetch trips from Supabase for driver_id: ${user.id}`);
       const { data, error: fetchError } = await supabase
         .from("trips")
         .select("*")
@@ -80,15 +75,11 @@ export default function ManageTripsPage() {
         .gt("departure_datetime", new Date().toISOString())
         .order("departure_datetime", { ascending: true });
 
-      console.log("[ManageTripsPage] fetchTrips: Supabase response. Error:", fetchError, "Data:", data);
-
       if (fetchError) {
         throw fetchError;
       }
       setTrips(data || []);
-      console.log(`[ManageTripsPage] fetchTrips: Successfully fetched ${data?.length || 0} trips.`);
     } catch (e: any) {
-      console.error("[ManageTripsPage] fetchTrips: Error caught during fetch.", e);
       const errorMessage = e.message || "No se pudieron cargar tus viajes.";
       setError(errorMessage);
       toast({
@@ -97,22 +88,16 @@ export default function ManageTripsPage() {
         variant: "destructive",
       });
     } finally {
-      console.log("[ManageTripsPage] fetchTrips: Setting isLoading to false in finally block.");
       setIsLoading(false);
     }
-  }, [user, toast]); // Use user object as dependency
+  }, [user, toast]);
 
   useEffect(() => {
-    console.log("[ManageTripsPage] useEffect triggered to call fetchTrips.");
     fetchTrips();
   }, [fetchTrips]);
 
   const handleDeleteTrip = async () => {
-    if (!tripToDelete) {
-      console.warn("[ManageTripsPage] handleDeleteTrip: No trip selected for deletion.");
-      return;
-    }
-    console.log(`[ManageTripsPage] handleDeleteTrip: Attempting to delete trip ID: ${tripToDelete.id}`);
+    if (!tripToDelete) return;
 
     try {
       const { error: deleteError } = await supabase
@@ -120,9 +105,7 @@ export default function ManageTripsPage() {
         .delete()
         .eq("id", tripToDelete.id);
 
-      if (deleteError) {
-        throw deleteError;
-      }
+      if (deleteError) throw deleteError;
 
       setTrips((prevTrips) => prevTrips.filter((trip) => trip.id !== tripToDelete.id));
       toast({
@@ -130,9 +113,7 @@ export default function ManageTripsPage() {
         description: `El viaje de ${tripToDelete.origin} a ${tripToDelete.destination} ha sido eliminado.`,
         variant: "default",
       });
-      console.log(`[ManageTripsPage] handleDeleteTrip: Successfully deleted trip ID: ${tripToDelete.id}`);
     } catch (e: any) {
-      console.error("[ManageTripsPage] handleDeleteTrip: Error caught during deletion.", e);
       toast({
         title: "Error al Eliminar Viaje",
         description: e.message || "No se pudo eliminar el viaje.",
@@ -144,7 +125,6 @@ export default function ManageTripsPage() {
   };
 
   if (isLoading) {
-    console.log("[ManageTripsPage] Rendering loading state.");
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -154,7 +134,6 @@ export default function ManageTripsPage() {
   }
 
   if (error) {
-    console.log(`[ManageTripsPage] Rendering error state: ${error}`);
     return (
       <Card className="w-full max-w-lg mx-auto text-center shadow-lg">
         <CardHeader>
@@ -163,13 +142,12 @@ export default function ManageTripsPage() {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground mb-4">{error}</p>
-          <Button onClick={() => { console.log("[ManageTripsPage] Retry button clicked."); fetchTrips(); }}>Intentar de Nuevo</Button>
+          <Button onClick={fetchTrips}>Intentar de Nuevo</Button>
         </CardContent>
       </Card>
     );
   }
 
-  console.log(`[ManageTripsPage] Rendering main content. Number of trips: ${trips.length}`);
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -222,10 +200,11 @@ export default function ManageTripsPage() {
                 </div>
               </CardContent>
               <CardFooter className="grid grid-cols-2 gap-2 pt-4">
-                <Button variant="outline" disabled> {/* Funcionalidad de Editar pendiente */}
-                  <Edit3 className="mr-2 h-4 w-4" /> Editar
+                <Button variant="outline" asChild>
+                  <Link href={`/dashboard/driver/edit-trip/${trip.id}`}>
+                    <Edit3 className="mr-2 h-4 w-4" /> Editar
+                  </Link>
                 </Button>
-                {/* Changed AlertDialogTrigger to a simple Button that sets state */}
                 <Button variant="destructive" onClick={() => setTripToDelete(trip)}>
                   <Trash2 className="mr-2 h-4 w-4" /> Eliminar
                 </Button>
@@ -235,7 +214,6 @@ export default function ManageTripsPage() {
         </div>
       )}
 
-      {/* This AlertDialog is controlled by the `tripToDelete` state */}
       <AlertDialog open={!!tripToDelete} onOpenChange={(open) => !open && setTripToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
