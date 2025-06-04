@@ -142,7 +142,7 @@ const SidebarProvider = React.forwardRef<
               } as React.CSSProperties
             }
             className={cn(
-              "group/sidebar-wrapper flex min-h-svh w-full has-[[data-variant=inset]]:bg-sidebar",
+              "group/sidebar-wrapper flex w-full has-[[data-variant=inset]]:bg-sidebar", // Removed min-h-svh
               className
             )}
             ref={ref}
@@ -317,14 +317,13 @@ SidebarRail.displayName = "SidebarRail"
 
 const SidebarInset = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div"> // Changed from "main"
+  React.ComponentProps<"div">
 >(({ className, ...props }, ref) => {
   return (
-    <div // Changed from "main"
+    <div
       ref={ref}
       className={cn(
-        "relative flex flex-1 flex-col bg-background", // Removed min-h-svh
-        // The peer-data classes below are for the "inset" variant, which might not be active here
+        "relative flex flex-1 flex-col bg-background",
         "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))]", 
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className

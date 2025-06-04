@@ -11,7 +11,7 @@ body {
     @apply h-full;
   }
   body {
-    @apply bg-background text-foreground overflow-hidden; /* Added overflow-hidden */
+    @apply bg-background text-foreground; /* Removed overflow-hidden */
   }
   :root {
     --background: 0 0% 96.1%; /* #F5F5F5 Light Gray */
