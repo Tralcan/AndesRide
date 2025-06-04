@@ -1,4 +1,3 @@
-
 // src/app/dashboard/layout.tsx
 "use client";
 
@@ -40,9 +39,10 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen w-full flex-col bg-muted/40 overflow-hidden"> {/* Changed min-h-screen to h-screen and added overflow-hidden */}
+      <div className="flex h-screen w-full flex-col bg-muted/40 overflow-hidden">
         <AppSidebar />
-        <div className="flex flex-col flex-1 sm:gap-4 sm:py-4 overflow-hidden"> {/* This overflow-hidden is important */}
+        {/* Contenedor para AppHeader y SidebarInset. Eliminado sm:gap-4 y sm:py-4 */}
+        <div className="flex flex-col flex-1 overflow-hidden"> 
           <AppHeader />
           <SidebarInset>
             <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
