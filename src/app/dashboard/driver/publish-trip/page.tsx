@@ -20,6 +20,7 @@ import { CalendarIcon, MapPin, Users, PlusCircle, Clock } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useState, useEffect } from "react";
+import { useRouter } from "next/navigation"; // Import useRouter
 
 const TripFormSchema = z.object({
   origin: z.string().min(1, "Por favor selecciona un origen."),
@@ -45,6 +46,7 @@ export default function PublishTripPage() {
   const [origins, setOrigins] = useState<LocationOption[]>([]);
   const [destinations, setDestinations] = useState<LocationOption[]>([]);
   const [isLoadingLocations, setIsLoadingLocations] = useState(true);
+  const router = useRouter(); // Initialize useRouter
   
   const form = useForm<z.infer<typeof TripFormSchema>>({
     resolver: zodResolver(TripFormSchema),
@@ -138,6 +140,7 @@ export default function PublishTripPage() {
         variant: "default"
       });
       form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "10:00" });
+      router.push("/dashboard"); // Redirect to dashboard
     } catch (error: any) {
       console.error("[PublishTripPage] Error publishing trip in catch block:", error);
       toast({
