@@ -7,6 +7,12 @@ body {
 }
 
 @layer base {
+  html, body {
+    @apply h-full;
+  }
+  body {
+    @apply bg-background text-foreground overflow-hidden; /* Added overflow-hidden */
+  }
   :root {
     --background: 0 0% 96.1%; /* #F5F5F5 Light Gray */
     --foreground: 240 10% 3.9%; /* Dark Gray for contrast */
@@ -105,7 +111,5 @@ body {
   * {
     @apply border-border;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
+  /* body styles moved to html, body block above for height */
 }
