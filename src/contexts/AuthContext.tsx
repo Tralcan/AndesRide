@@ -4,7 +4,7 @@
 
 import type { Role } from "@/lib/constants";
 import { supabase } from "@/lib/supabaseClient";
-import type { AuthError, Session, User as SupabaseUser } from "@supabase/supabase-js";
+import type { AuthError, AuthSubscription, Session, User as SupabaseUser } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactNode, SetStateAction} from "react";
 import { createContext, useState, useEffect, useCallback } from "react";
@@ -80,7 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
-    console.log("[AuthContext] useEffect triggered. Initializing, checking session.");
+    console.log("[AuthContext] useEffect triggered. Initializing, checking session. isMounted:", isMounted);
     setIsLoading(true);
 
     supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
@@ -106,7 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       }
       setIsLoading(false);
-      console.log("[AuthContext] Initial session processing complete. isLoading set to false.");
+      console.log("[AuthContext] Initial session processing complete. isLoading set to false. isMounted:", isMounted);
     }).catch(sessionError => {
         if (!isMounted) {
             console.log("[AuthContext] getSession().catch: Component unmounted, aborting state update.");
@@ -116,13 +116,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setIsLoading(false);
     });
 
-    const { data: authListener } = supabase.auth.onAuthStateChange(
+    const { data: authListenerData } = supabase.auth.onAuthStateChange(
       async (event, newSession) => {
         if (!isMounted) {
             console.log("[AuthContext] onAuthStateChange: Component unmounted, aborting handler.");
             return;
         }
-        console.log('[AuthContext] Auth event:', event, 'New session:', newSession);
+        console.log('[AuthContext] Auth event:', event, 'New session:', newSession, 'isMounted:', isMounted);
         setIsLoading(true);
         try {
           setSession(newSession);
@@ -171,22 +171,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         } finally {
           if (isMounted) {
             setIsLoading(false);
-            console.log('[AuthContext] onAuthStateChange processing finished, isLoading set to false.');
+            console.log('[AuthContext] onAuthStateChange processing finished, isLoading set to false. isMounted:', isMounted);
           }
         }
       }
     );
+    
+    const subscription = authListenerData?.subscription;
 
     return () => {
       isMounted = false;
-      authListener?.unsubscribe();
+      subscription?.unsubscribe();
       console.log("[AuthContext] Unsubscribed from auth changes. Component unmounted.");
     };
   }, [router, fetchUserProfile, toast]);
 
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
-    // No es necesario setIsLoading(true) aquí, onAuthStateChange lo manejará
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -200,14 +201,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
         variant: "destructive",
       });
-      // No es necesario setIsLoading(false) aquí, si signInWithOAuth falla, onAuthStateChange no debería activarse de la forma esperada.
     }
     return { error };
   };
 
   const logout = async () => {
     console.log("[AuthContext] Attempting logout.");
-    // setIsLoading(true) se manejará por onAuthStateChange
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("[AuthContext] Error during signOut:", error);

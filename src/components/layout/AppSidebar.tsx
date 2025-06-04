@@ -13,7 +13,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES } from "@/lib/constants";
-import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings } from "lucide-react"; // Changed UsersCog to Settings
+import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -31,7 +31,7 @@ const passengerLinks = [
 ];
 
 const utilityLinks = [
-  { href: "/role-selection", label: "Cambiar Rol", icon: Settings }, // Changed icon to Settings
+  { href: "/role-selection", label: "Cambiar Rol", icon: Settings },
 ];
 
 export function AppSidebar() {
@@ -40,7 +40,7 @@ export function AppSidebar() {
 
   const roleSpecificLinks = role === ROLES.DRIVER ? driverLinks : passengerLinks;
   const roleName = role === ROLES.DRIVER ? "Conductor" : "Pasajero";
-  const displayName = user?.profile?.fullName || user?.email || "Usuario";
+  const displayName = user?.profile?.fullName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || "Usuario";
 
   return (
     <Sidebar collapsible="offcanvas" variant="sidebar" side="left">
