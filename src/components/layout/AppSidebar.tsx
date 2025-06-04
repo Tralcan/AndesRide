@@ -13,7 +13,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES } from "@/lib/constants";
-import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, UsersCog } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings } from "lucide-react"; // Changed UsersCog to Settings
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -31,7 +31,7 @@ const passengerLinks = [
 ];
 
 const utilityLinks = [
-  { href: "/role-selection", label: "Cambiar Rol", icon: UsersCog },
+  { href: "/role-selection", label: "Cambiar Rol", icon: Settings }, // Changed icon to Settings
 ];
 
 export function AppSidebar() {
