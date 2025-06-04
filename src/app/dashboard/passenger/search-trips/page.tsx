@@ -4,13 +4,12 @@
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { TripCard, type Trip } from "@/components/TripCard";
 import { useToast } from "@/hooks/use-toast";
-import { LOCATIONS, Location } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
@@ -19,14 +18,19 @@ import { CalendarIcon, MapPin, SearchIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
+import { supabase } from "@/lib/supabaseClient";
 
 const SearchFiltersSchema = z.object({
-  origin: z.custom<Location>().optional(),
-  destination: z.custom<Location>().optional(),
+  origin: z.string().optional(),
+  destination: z.string().optional(),
   date: z.date().optional(),
 });
 
-// Mock data for trips
+interface LocationOption {
+  nombre: string;
+}
+
+// Mock data for trips - Ensure these string values match potential dynamic values
 const MOCK_TRIPS: Trip[] = [
   { id: "1", driverName: "Maria G.", driverAvatar: "https://placehold.co/100x100.png?text=MG", origin: "Bogotá", destination: "Medellín", date: new Date(2024, 7, 15), availableSeats: 2, price: 25 },
   { id: "2", driverName: "Carlos R.", driverAvatar: "https://placehold.co/100x100.png?text=CR", origin: "Cali", destination: "Pereira", date: new Date(2024, 7, 16), availableSeats: 3, price: 18 },
@@ -37,11 +41,45 @@ const MOCK_TRIPS: Trip[] = [
 export default function SearchTripsPage() {
   const { toast } = useToast();
   const [filteredTrips, setFilteredTrips] = useState<Trip[]>(MOCK_TRIPS);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(false); // For trip search loading
+  const [origins, setOrigins] = useState<LocationOption[]>([]);
+  const [destinations, setDestinations] = useState<LocationOption[]>([]);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(true); // For location fetching
 
   const form = useForm<z.infer<typeof SearchFiltersSchema>>({
     resolver: zodResolver(SearchFiltersSchema),
   });
+
+  useEffect(() => {
+    async function fetchLocations() {
+      setIsLoadingLocations(true);
+      try {
+        const { data: originsData, error: originsError } = await supabase
+          .from('origen')
+          .select('nombre')
+          .eq('estado', true);
+        if (originsError) throw originsError;
+        setOrigins(originsData || []);
+
+        const { data: destinationsData, error: destinationsError } = await supabase
+          .from('destino')
+          .select('nombre')
+          .eq('estado', true);
+        if (destinationsError) throw destinationsError;
+        setDestinations(destinationsData || []);
+      } catch (error: any) {
+        console.error("Error fetching locations for Search Trips:", error);
+        toast({
+          title: "Error al Cargar Ubicaciones",
+          description: error.message || "No se pudieron obtener los orígenes/destinos.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingLocations(false);
+      }
+    }
+    fetchLocations();
+  }, [toast]);
 
   const onSubmit = (data: z.infer<typeof SearchFiltersSchema>) => {
     setIsLoading(true);
@@ -75,7 +113,6 @@ export default function SearchTripsPage() {
     });
   };
 
-  // Load all trips initially
   useEffect(() => {
     setFilteredTrips(MOCK_TRIPS);
   }, []);
@@ -102,20 +139,32 @@ export default function SearchTripsPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origen</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value || ""}
+                        disabled={isLoadingLocations}
+                      >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Cualquier Origen" />
+                            <SelectValue placeholder={isLoadingLocations ? "Cargando..." : "Cualquier Origen"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {LOCATIONS.map((location) => (
-                            <SelectItem key={`origin-${location}`} value={location}>
-                              {location}
-                            </SelectItem>
-                          ))}
+                          {isLoadingLocations ? (
+                            <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                          ) : (
+                            <>
+                              <SelectItem value="">Cualquier Origen</SelectItem>
+                              {origins.map((location) => (
+                                <SelectItem key={`origin-${location.nombre}`} value={location.nombre}>
+                                  {location.nombre}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -125,20 +174,32 @@ export default function SearchTripsPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destino</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value || ""}
+                        disabled={isLoadingLocations}
+                      >
                         <FormControl>
                           <SelectTrigger>
-                            <SelectValue placeholder="Cualquier Destino" />
+                            <SelectValue placeholder={isLoadingLocations ? "Cargando..." : "Cualquier Destino"} />
                           </SelectTrigger>
                         </FormControl>
                         <SelectContent>
-                          {LOCATIONS.map((location) => (
-                            <SelectItem key={`dest-${location}`} value={location}>
-                              {location}
-                            </SelectItem>
-                          ))}
+                          {isLoadingLocations ? (
+                            <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                          ) : (
+                            <>
+                              <SelectItem value="">Cualquier Destino</SelectItem>
+                              {destinations.map((location) => (
+                                <SelectItem key={`dest-${location.nombre}`} value={location.nombre}>
+                                  {location.nombre}
+                                </SelectItem>
+                              ))}
+                            </>
+                          )}
                         </SelectContent>
                       </Select>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
@@ -167,15 +228,16 @@ export default function SearchTripsPage() {
                           <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={es} />
                         </PopoverContent>
                       </Popover>
+                      <FormMessage />
                     </FormItem>
                   )}
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => {form.reset(); setFilteredTrips(MOCK_TRIPS);}} disabled={isLoading}>
+                <Button type="button" variant="outline" onClick={() => {form.reset({ origin: "", destination: "", date: undefined }); setFilteredTrips(MOCK_TRIPS);}} disabled={isLoading || isLoadingLocations}>
                   Limpiar Filtros
                 </Button>
-                <Button type="submit" disabled={isLoading}>
+                <Button type="submit" disabled={isLoading || isLoadingLocations}>
                   {isLoading ? "Buscando..." : "Buscar Viajes"}
                 </Button>
               </div>
@@ -217,3 +279,5 @@ export default function SearchTripsPage() {
     </div>
   );
 }
+
+    

@@ -1,20 +1,7 @@
 
 export const APP_NAME = "AndesRide";
 
-export const LOCATIONS = [
-  "Bogotá",
-  "Medellín",
-  "Cali",
-  "Barranquilla",
-  "Cartagena",
-  "Cúcuta",
-  "Bucaramanga",
-  "Pereira",
-  "Santa Marta",
-  "Ibagué",
-] as const;
-
-export type Location = typeof LOCATIONS[number];
+// LOCATIONS array and Location type are removed as they are now fetched dynamically.
 
 export const ROLES = {
   DRIVER: "conductor",
@@ -26,3 +13,4 @@ export type Role = typeof ROLES[keyof typeof ROLES] | null;
 // DEFAULT_USER_EMAIL ya no es necesario con Supabase Auth
 // export const DEFAULT_USER_EMAIL = "testuser@example.com";
 
+    

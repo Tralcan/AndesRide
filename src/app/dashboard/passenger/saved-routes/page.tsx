@@ -10,25 +10,21 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
-import { LOCATIONS, Location } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, BookmarkPlus, BellRing, Trash2, Route } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { watchRoute, type WatchRouteInput } from "@/ai/flows/route-watcher"; // Import GenAI flow
+import { watchRoute, type WatchRouteInput } from "@/ai/flows/route-watcher";
+import { supabase } from "@/lib/supabaseClient";
 
 const SavedRouteSchema = z.object({
-  origin: z.custom<Location>((val) => LOCATIONS.includes(val as Location), {
-    message: "Por favor selecciona un origen válido.",
-  }),
-  destination: z.custom<Location>((val) => LOCATIONS.includes(val as Location), {
-    message: "Por favor selecciona un destino válido.",
-  }),
-  date: z.date().optional(), 
+  origin: z.string().min(1, "Por favor selecciona un origen."),
+  destination: z.string().min(1, "Por favor selecciona un destino."),
+  date: z.date().optional(),
 }).refine(data => data.origin !== data.destination, {
   message: "El origen y el destino no pueden ser iguales.",
   path: ["destination"],
@@ -38,15 +34,57 @@ interface SavedRouteItem extends z.infer<typeof SavedRouteSchema> {
   id: string;
 }
 
+interface LocationOption {
+  nombre: string;
+}
+
 export default function SavedRoutesPage() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [savedRoutes, setSavedRoutes] = useState<SavedRouteItem[]>([]);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [origins, setOrigins] = useState<LocationOption[]>([]);
+  const [destinations, setDestinations] = useState<LocationOption[]>([]);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(true);
 
   const form = useForm<z.infer<typeof SavedRouteSchema>>({
     resolver: zodResolver(SavedRouteSchema),
+    defaultValues: {
+      origin: "",
+      destination: "",
+    }
   });
+
+  useEffect(() => {
+    async function fetchLocations() {
+      setIsLoadingLocations(true);
+      try {
+        const { data: originsData, error: originsError } = await supabase
+          .from('origen')
+          .select('nombre')
+          .eq('estado', true);
+        if (originsError) throw originsError;
+        setOrigins(originsData || []);
+
+        const { data: destinationsData, error: destinationsError } = await supabase
+          .from('destino')
+          .select('nombre')
+          .eq('estado', true);
+        if (destinationsError) throw destinationsError;
+        setDestinations(destinationsData || []);
+      } catch (error: any) {
+        console.error("Error fetching locations for Saved Routes:", error);
+        toast({
+          title: "Error al Cargar Ubicaciones",
+          description: error.message || "No se pudieron obtener los orígenes/destinos.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingLocations(false);
+      }
+    }
+    fetchLocations();
+  }, [toast]);
 
   async function onSubmit(data: z.infer<typeof SavedRouteSchema>) {
     if (!user?.email) {
@@ -57,7 +95,7 @@ export default function SavedRoutesPage() {
 
     const newSavedRoute: SavedRouteItem = { ...data, id: Date.now().toString() };
     setSavedRoutes(prev => [...prev, newSavedRoute]);
-    form.reset();
+    form.reset({ origin: "", destination: "", date: undefined });
     
     toast({
       title: "¡Ruta Guardada!",
@@ -138,9 +176,25 @@ export default function SavedRoutesPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origen</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona origen" /></SelectTrigger></FormControl>
-                        <SelectContent>{LOCATIONS.map(loc => <SelectItem key={`sro-${loc}`} value={loc}>{loc}</SelectItem>)}</SelectContent>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value}
+                        disabled={isLoadingLocations}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={isLoadingLocations ? "Cargando..." : "Selecciona origen"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {isLoadingLocations ? (
+                            <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                          ) : origins.length === 0 ? (
+                            <SelectItem value="no-options" disabled>No hay orígenes</SelectItem>
+                          ) : (
+                            origins.map(loc => <SelectItem key={`sro-${loc.nombre}`} value={loc.nombre}>{loc.nombre}</SelectItem>)
+                          )}
+                        </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
@@ -152,9 +206,25 @@ export default function SavedRoutesPage() {
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destino</FormLabel>
-                      <Select onValueChange={field.onChange} defaultValue={field.value}>
-                        <FormControl><SelectTrigger><SelectValue placeholder="Selecciona destino" /></SelectTrigger></FormControl>
-                        <SelectContent>{LOCATIONS.map(loc => <SelectItem key={`srd-${loc}`} value={loc}>{loc}</SelectItem>)}</SelectContent>
+                      <Select 
+                        onValueChange={field.onChange} 
+                        value={field.value}
+                        disabled={isLoadingLocations}
+                      >
+                        <FormControl>
+                          <SelectTrigger>
+                            <SelectValue placeholder={isLoadingLocations ? "Cargando..." : "Selecciona destino"} />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {isLoadingLocations ? (
+                            <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                          ) : destinations.length === 0 ? (
+                            <SelectItem value="no-options" disabled>No hay destinos</SelectItem>
+                          ) : (
+                            destinations.map(loc => <SelectItem key={`srd-${loc.nombre}`} value={loc.nombre}>{loc.nombre}</SelectItem>)
+                          )}
+                        </SelectContent>
                       </Select>
                       <FormMessage />
                     </FormItem>
@@ -186,7 +256,7 @@ export default function SavedRoutesPage() {
                   </FormItem>
                 )}
               />
-              <Button type="submit" className="w-full md:w-auto" size="lg" disabled={isSubmitting}>
+              <Button type="submit" className="w-full md:w-auto" size="lg" disabled={isSubmitting || isLoadingLocations}>
                 <BellRing className="mr-2 h-5 w-5" /> {isSubmitting ? "Guardando..." : "Guardar Ruta y Vigilar"}
               </Button>
             </form>
@@ -222,3 +292,5 @@ export default function SavedRoutesPage() {
     </div>
   );
 }
+
+    

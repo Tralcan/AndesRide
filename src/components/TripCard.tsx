@@ -3,7 +3,6 @@
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { CalendarDays, MapPin, Users, ArrowRight } from "lucide-react";
-import type { Location } from "@/lib/constants";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 import Image from "next/image";
@@ -12,8 +11,8 @@ export interface Trip {
   id: string;
   driverName: string;
   driverAvatar: string;
-  origin: Location;
-  destination: Location;
+  origin: string; // Changed from Location type
+  destination: string; // Changed from Location type
   date: Date;
   availableSeats: number;
   price?: number; // Optional
@@ -80,3 +79,5 @@ export function TripCard({ trip, onRequestRide }: TripCardProps) {
     </Card>
   );
 }
+
+    
