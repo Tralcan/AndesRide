@@ -17,7 +17,7 @@ import {
   AlertDialogFooter,
   AlertDialogHeader,
   AlertDialogTitle,
-  AlertDialogTrigger,
+  // AlertDialogTrigger, // No longer needed here for the trigger itself
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ListChecks, Trash2, Edit3, CalendarDays, Users, MapPin, ArrowRight, Loader2, Frown } from "lucide-react";
@@ -225,17 +225,17 @@ export default function ManageTripsPage() {
                 <Button variant="outline" disabled> {/* Funcionalidad de Editar pendiente */}
                   <Edit3 className="mr-2 h-4 w-4" /> Editar
                 </Button>
-                <AlertDialogTrigger asChild>
-                  <Button variant="destructive" onClick={() => setTripToDelete(trip)}>
-                    <Trash2 className="mr-2 h-4 w-4" /> Eliminar
-                  </Button>
-                </AlertDialogTrigger>
+                {/* Changed AlertDialogTrigger to a simple Button that sets state */}
+                <Button variant="destructive" onClick={() => setTripToDelete(trip)}>
+                  <Trash2 className="mr-2 h-4 w-4" /> Eliminar
+                </Button>
               </CardFooter>
             </Card>
           ))}
         </div>
       )}
 
+      {/* This AlertDialog is controlled by the `tripToDelete` state */}
       <AlertDialog open={!!tripToDelete} onOpenChange={(open) => !open && setTripToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
