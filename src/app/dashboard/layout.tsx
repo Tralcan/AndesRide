@@ -39,12 +39,14 @@ export default function DashboardLayout({
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen w-full flex-col bg-muted/40 overflow-hidden">
+      {/* Main container is flex (row by default), h-screen, overflow-hidden */}
+      <div className="flex h-screen w-full bg-muted/40 overflow-hidden">
         <AppSidebar />
-        {/* Contenedor para AppHeader y SidebarInset. Eliminado sm:gap-4 y sm:py-4 */}
+        {/* This div wraps the main content area (header + scrollable content) */}
+        {/* It's a flex item that grows (flex-1) and manages its own overflow. */}
         <div className="flex flex-col flex-1 overflow-hidden"> 
           <AppHeader />
-          <SidebarInset>
+          <SidebarInset> {/* SidebarInset now renders a div */}
             <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
               {children}
             </main>

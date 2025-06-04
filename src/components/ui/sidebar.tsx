@@ -142,7 +142,7 @@ const SidebarProvider = React.forwardRef<
               } as React.CSSProperties
             }
             className={cn(
-              "group/sidebar-wrapper w-full has-[[data-variant=inset]]:bg-sidebar", // REMOVED 'flex'
+              "group/sidebar-wrapper w-full has-[[data-variant=inset]]:bg-sidebar",
               className
             )}
             ref={ref}
@@ -176,14 +176,11 @@ const Sidebar = React.forwardRef<
     },
     ref
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile, setOpen } = useSidebar()
+    const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
 
     const handleMenuItemClick = () => {
       if (isMobile) {
         setOpenMobile(false);
-      } else {
-        // Optionally close desktop sidebar as well, or keep it open
-        // setOpen(false); 
       }
     };
 
@@ -230,38 +227,43 @@ const Sidebar = React.forwardRef<
     }
 
     return (
+      // This outer div is a flex item in DashboardLayout (if DashboardLayout's main div is flex-row)
+      // It should not have its own height fixed to svh, but rather take height from the flex parent.
       <div
         ref={ref}
-        className="group peer hidden md:block text-sidebar-foreground"
+        className={cn(
+          "group peer hidden md:block text-sidebar-foreground h-full", // Added h-full
+           className
+        )}
         data-state={state}
         data-collapsible={state === "collapsed" ? collapsible : ""}
         data-variant={variant}
         data-side={side}
       >
-        {/* This is what handles the sidebar gap on desktop */}
+        {/* This placeholder div is for managing width transitions. Its height should be h-full of its parent. */}
         <div
           className={cn(
-            "duration-200 relative h-svh w-[--sidebar-width] bg-transparent transition-[width] ease-linear",
+            "duration-200 relative h-full w-[--sidebar-width] bg-transparent transition-[width] ease-linear", // Changed h-svh to h-full
             "group-data-[collapsible=offcanvas]:w-0",
-            "group-data-[side=right]:rotate-180",
+            "group-data-[side=right]:rotate-180", // This might need removal if side="right" is not used or handled differently
             variant === "floating" || variant === "inset"
               ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
               : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]"
           )}
         />
+        {/* This is the actual visual sidebar, fixed position, takes full viewport height */}
         <div
           className={cn(
-            "duration-200 fixed inset-y-0 z-10 hidden h-svh w-[--sidebar-width] transition-[left,right,width] ease-linear md:flex",
+            "duration-200 fixed inset-y-0 z-40 hidden h-svh w-[--sidebar-width] transition-[left,right,width] ease-linear md:flex",
             side === "left"
               ? "left-0 group-data-[collapsible=offcanvas]:left-[calc(var(--sidebar-width)*-1)]"
               : "right-0 group-data-[collapsible=offcanvas]:right-[calc(var(--sidebar-width)*-1)]",
-            // Adjust the padding for floating and inset variants.
             variant === "floating" || variant === "inset"
               ? "p-2 group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4)_+2px)]"
               : "group-data-[collapsible=icon]:w-[--sidebar-width-icon] group-data-[side=left]:border-r group-data-[side=right]:border-l",
-            className
+            // className for the fixed part shouldn't be passed from the outer div's className prop
           )}
-          {...props}
+          // {...props} // props should be on the outer div, not here
         >
           <div
             data-sidebar="sidebar"
@@ -341,7 +343,7 @@ const SidebarInset = React.forwardRef<
     <div
       ref={ref}
       className={cn(
-        "relative flex flex-1 flex-col bg-background",
+        "relative flex flex-1 flex-col bg-background", 
         "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))]",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className
