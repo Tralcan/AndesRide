@@ -1,3 +1,4 @@
+
 // src/components/layout/AppSidebar.tsx
 "use client";
 
@@ -13,7 +14,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES } from "@/lib/constants";
-import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings } from "lucide-react"; // UsersCog changed to Settings if that was the last attempt
+import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings, ListChecks } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -23,6 +24,7 @@ const commonLinks = [
 
 const driverLinks = [
   { href: "/dashboard/driver/publish-trip", label: "Publicar Viaje", icon: PlusCircle },
+  { href: "/dashboard/driver/manage-trips", label: "Gestionar Viajes", icon: ListChecks },
 ];
 
 const passengerLinks = [
@@ -31,7 +33,7 @@ const passengerLinks = [
 ];
 
 const utilityLinks = [
-  { href: "/role-selection", label: "Cambiar Rol", icon: Settings }, // Using Settings icon
+  { href: "/role-selection", label: "Cambiar Rol", icon: Settings },
 ];
 
 export function AppSidebar() {

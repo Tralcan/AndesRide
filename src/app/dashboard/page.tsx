@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { useAuth } from "@/hooks/useAuth";
 import { APP_NAME, ROLES } from "@/lib/constants";
-import { Car, User, PlusCircle, Search } from "lucide-react";
+import { Car, User, PlusCircle, Search, ListChecks } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 
@@ -95,7 +95,8 @@ export default function DashboardPage() {
 
         <Card className="hover:shadow-xl transition-shadow">
           <CardHeader>
-            <CardTitle className="text-xl">
+            <CardTitle className="flex items-center gap-2 text-xl">
+               {role === ROLES.DRIVER && <ListChecks className="h-6 w-6 text-accent" />}
               {role === ROLES.DRIVER ? "Gestionar Tus Viajes" : "Tus Reservas"}
             </CardTitle>
             <CardDescription>
@@ -105,9 +106,15 @@ export default function DashboardPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button variant="outline" size="lg" className="w-full sm:w-auto" disabled>
-              Ver Detalles (Próximamente)
-            </Button>
+            {role === ROLES.DRIVER ? (
+              <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
+                <Link href="/dashboard/driver/manage-trips">Ver Mis Viajes</Link>
+              </Button>
+            ) : (
+              <Button variant="outline" size="lg" className="w-full sm:w-auto" disabled>
+                Ver Detalles (Próximamente)
+              </Button>
+            )}
           </CardContent>
         </Card>
       </div>
