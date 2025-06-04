@@ -3,6 +3,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import type { Locale } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
 import { supabase } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
@@ -34,6 +35,21 @@ interface Trip {
   driver_id: string;
 }
 
+// Helper function for safe date formatting
+const safeFormatDate = (dateInput: string | Date, formatString: string, options?: { locale?: Locale }): string => {
+  try {
+    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    if (isNaN(date.getTime())) {
+      console.warn(`[safeFormatDate] Invalid date input encountered: ${dateInput}`);
+      return "Fecha inválida";
+    }
+    return format(date, formatString, options);
+  } catch (e) {
+    console.error(`[safeFormatDate] Error formatting date: ${dateInput}`, e);
+    return "Error de fecha";
+  }
+};
+
 export default function ManageTripsPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -43,46 +59,60 @@ export default function ManageTripsPage() {
   const [tripToDelete, setTripToDelete] = useState<Trip | null>(null);
 
   const fetchTrips = useCallback(async () => {
+    console.log("[ManageTripsPage] fetchTrips called. User available:", !!user, "User ID:", user?.id);
     if (!user?.id) {
-      setError("Usuario no autenticado.");
+      console.warn("[ManageTripsPage] fetchTrips: User or user.id is not available. Aborting fetch.");
+      setError("Usuario no autenticado o ID no disponible para cargar viajes.");
       setIsLoading(false);
       return;
     }
 
+    console.log(`[ManageTripsPage] fetchTrips: Setting isLoading to true for user: ${user.id}`);
     setIsLoading(true);
     setError(null);
 
     try {
+      console.log(`[ManageTripsPage] fetchTrips: Attempting to fetch trips from Supabase for driver_id: ${user.id}`);
       const { data, error: fetchError } = await supabase
         .from("trips")
         .select("*")
         .eq("driver_id", user.id)
-        .gt("departure_datetime", new Date().toISOString()) // Solo viajes futuros
+        .gt("departure_datetime", new Date().toISOString())
         .order("departure_datetime", { ascending: true });
+
+      console.log("[ManageTripsPage] fetchTrips: Supabase response. Error:", fetchError, "Data:", data);
 
       if (fetchError) {
         throw fetchError;
       }
       setTrips(data || []);
+      console.log(`[ManageTripsPage] fetchTrips: Successfully fetched ${data?.length || 0} trips.`);
     } catch (e: any) {
-      console.error("Error fetching trips:", e);
-      setError(e.message || "No se pudieron cargar tus viajes.");
+      console.error("[ManageTripsPage] fetchTrips: Error caught during fetch.", e);
+      const errorMessage = e.message || "No se pudieron cargar tus viajes.";
+      setError(errorMessage);
       toast({
         title: "Error al Cargar Viajes",
-        description: e.message || "Ocurrió un error al obtener tus viajes.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
+      console.log("[ManageTripsPage] fetchTrips: Setting isLoading to false in finally block.");
       setIsLoading(false);
     }
-  }, [user?.id, toast]);
+  }, [user, toast]); // Use user object as dependency
 
   useEffect(() => {
+    console.log("[ManageTripsPage] useEffect triggered to call fetchTrips.");
     fetchTrips();
   }, [fetchTrips]);
 
   const handleDeleteTrip = async () => {
-    if (!tripToDelete) return;
+    if (!tripToDelete) {
+      console.warn("[ManageTripsPage] handleDeleteTrip: No trip selected for deletion.");
+      return;
+    }
+    console.log(`[ManageTripsPage] handleDeleteTrip: Attempting to delete trip ID: ${tripToDelete.id}`);
 
     try {
       const { error: deleteError } = await supabase
@@ -100,8 +130,9 @@ export default function ManageTripsPage() {
         description: `El viaje de ${tripToDelete.origin} a ${tripToDelete.destination} ha sido eliminado.`,
         variant: "default",
       });
+      console.log(`[ManageTripsPage] handleDeleteTrip: Successfully deleted trip ID: ${tripToDelete.id}`);
     } catch (e: any) {
-      console.error("Error deleting trip:", e);
+      console.error("[ManageTripsPage] handleDeleteTrip: Error caught during deletion.", e);
       toast({
         title: "Error al Eliminar Viaje",
         description: e.message || "No se pudo eliminar el viaje.",
@@ -113,6 +144,7 @@ export default function ManageTripsPage() {
   };
 
   if (isLoading) {
+    console.log("[ManageTripsPage] Rendering loading state.");
     return (
       <div className="flex justify-center items-center h-64">
         <Loader2 className="h-12 w-12 animate-spin text-primary" />
@@ -122,6 +154,7 @@ export default function ManageTripsPage() {
   }
 
   if (error) {
+    console.log(`[ManageTripsPage] Rendering error state: ${error}`);
     return (
       <Card className="w-full max-w-lg mx-auto text-center shadow-lg">
         <CardHeader>
@@ -130,12 +163,13 @@ export default function ManageTripsPage() {
         </CardHeader>
         <CardContent>
           <p className="text-muted-foreground mb-4">{error}</p>
-          <Button onClick={fetchTrips}>Intentar de Nuevo</Button>
+          <Button onClick={() => { console.log("[ManageTripsPage] Retry button clicked."); fetchTrips(); }}>Intentar de Nuevo</Button>
         </CardContent>
       </Card>
     );
   }
 
+  console.log(`[ManageTripsPage] Rendering main content. Number of trips: ${trips.length}`);
   return (
     <div className="space-y-8">
       <div className="flex items-center justify-between">
@@ -175,7 +209,7 @@ export default function ManageTripsPage() {
                 </CardTitle>
                 <CardDescription className="flex items-center pt-1">
                   <CalendarDays className="mr-2 h-4 w-4" />
-                  {format(new Date(trip.departure_datetime), "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es })}
+                  {safeFormatDate(trip.departure_datetime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es })}
                 </CardDescription>
               </CardHeader>
               <CardContent className="flex-grow space-y-2">
@@ -184,7 +218,7 @@ export default function ManageTripsPage() {
                   {trip.seats_available} {trip.seats_available === 1 ? 'asiento disponible' : 'asientos disponibles'}
                 </div>
                 <div className="text-xs text-muted-foreground">
-                    Publicado: {format(new Date(trip.created_at), "dd/MM/yy HH:mm", { locale: es })}
+                    Publicado: {safeFormatDate(trip.created_at, "dd/MM/yy HH:mm", { locale: es })}
                 </div>
               </CardContent>
               <CardFooter className="grid grid-cols-2 gap-2 pt-4">
@@ -202,7 +236,6 @@ export default function ManageTripsPage() {
         </div>
       )}
 
-      {/* AlertDialog para confirmar eliminación */}
       <AlertDialog open={!!tripToDelete} onOpenChange={(open) => !open && setTripToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -213,7 +246,7 @@ export default function ManageTripsPage() {
               a 
               <span className="font-semibold"> {tripToDelete?.destination} </span> 
               programado para 
-              <span className="font-semibold"> {tripToDelete ? format(new Date(tripToDelete.departure_datetime), "dd MMM, yyyy HH:mm", { locale: es }) : ''} </span>
+              <span className="font-semibold"> {tripToDelete ? safeFormatDate(tripToDelete.departure_datetime, "dd MMM, yyyy HH:mm", { locale: es }) : ''} </span>
               será eliminado permanentemente.
             </AlertDialogDescription>
           </AlertDialogHeader>
