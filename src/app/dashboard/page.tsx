@@ -27,7 +27,7 @@ export default function DashboardPage() {
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
             <div>
               <CardTitle className="text-3xl font-bold text-primary">
-                {getGreeting()}, {user?.name}!
+                {getGreeting()}, {user?.profile?.fullName || user?.email}!
               </CardTitle>
               <CardDescription className="text-lg text-muted-foreground mt-1">
                 Bienvenido de nuevo a {APP_NAME}. ¿Listo para tu próximo viaje?
@@ -43,13 +43,13 @@ export default function DashboardPage() {
           </div>
         </CardHeader>
         <CardContent>
-           <Image 
-            src="https://placehold.co/1200x400.png" 
-            alt="Vista panorámica de los Andes" 
-            width={1200} 
-            height={400} 
+           <Image
+            src="https://placehold.co/1200x400.png"
+            alt="Personas subiéndose a autos para un viaje compartido"
+            width={1200}
+            height={400}
             className="rounded-lg object-cover w-full"
-            data-ai-hint="mountains landscape"
+            data-ai-hint="people cars"
           />
         </CardContent>
       </Card>
