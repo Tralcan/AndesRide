@@ -9,24 +9,25 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { useAuth } from "@/hooks/useAuth"; // Import useAuth
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/lib/supabaseClient";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale/es";
-import { CalendarIcon, MapPin, Users, PlusCircle } from "lucide-react";
+import { CalendarIcon, MapPin, Users, PlusCircle, Clock } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useState, useEffect } from "react";
-import { supabase } from "@/lib/supabaseClient"; // Import Supabase client
 
-// Updated Zod schema
 const TripFormSchema = z.object({
   origin: z.string().min(1, "Por favor selecciona un origen."),
   destination: z.string().min(1, "Por favor selecciona un destino."),
   date: z.date({
     required_error: "Se requiere una fecha para el viaje.",
   }),
+  time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato de hora inválido (HH:MM)."),
   seats: z.coerce.number().min(1, "Debe haber al menos 1 asiento disponible.").max(10, "Máximo 10 asientos."),
 }).refine(data => data.origin !== data.destination, {
   message: "El origen y el destino no pueden ser iguales.",
@@ -39,6 +40,7 @@ interface LocationOption {
 
 export default function PublishTripPage() {
   const { toast } = useToast();
+  const { user } = useAuth(); // Get user from AuthContext
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [origins, setOrigins] = useState<LocationOption[]>([]);
   const [destinations, setDestinations] = useState<LocationOption[]>([]);
@@ -48,8 +50,9 @@ export default function PublishTripPage() {
     resolver: zodResolver(TripFormSchema),
     defaultValues: {
       seats: 1,
-      origin: "", // Initialize as empty string
-      destination: "", // Initialize as empty string
+      origin: "",
+      destination: "",
+      time: "10:00", // Default time
     },
   });
 
@@ -58,16 +61,16 @@ export default function PublishTripPage() {
       setIsLoadingLocations(true);
       try {
         const { data: originsData, error: originsError } = await supabase
-          .from('origen') // Assuming your table is named 'origen'
-          .select('nombre') // Assuming the column with location name is 'nombre'
+          .from('origen')
+          .select('nombre')
           .eq('estado', true);
 
         if (originsError) throw originsError;
         setOrigins(originsData || []);
 
         const { data: destinationsData, error: destinationsError } = await supabase
-          .from('destino') // Assuming your table is named 'destino'
-          .select('nombre') // Assuming the column with location name is 'nombre'
+          .from('destino')
+          .select('nombre')
           .eq('estado', true);
 
         if (destinationsError) throw destinationsError;
@@ -88,17 +91,57 @@ export default function PublishTripPage() {
   }, [toast]);
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
+    if (!user?.id) {
+      toast({
+        title: "Error de Autenticación",
+        description: "No se pudo identificar al conductor. Por favor, inicia sesión de nuevo.",
+        variant: "destructive",
+      });
+      return;
+    }
     setIsSubmitting(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1000));
-    console.log("Trip data submitted:", data);
-    toast({
-      title: "¡Viaje Publicado!",
-      description: `Tu viaje de ${data.origin} a ${data.destination} el ${format(data.date, "PPP", { locale: es })} ha sido publicado exitosamente.`,
-      variant: "default"
-    });
-    form.reset({ seats: 1, origin: "", destination: "", date: undefined }); 
-    setIsSubmitting(false);
+
+    try {
+      // Combine date and time into a full ISO string
+      const year = data.date.getFullYear();
+      const month = (data.date.getMonth() + 1).toString().padStart(2, '0'); // Month is 0-indexed
+      const day = data.date.getDate().toString().padStart(2, '0');
+      const [hours, minutes] = data.time.split(':');
+      
+      // Construct date string in YYYY-MM-DDTHH:mm:ss format (seconds can be 00)
+      // Supabase handles timezone conversion if your column is timestamptz
+      const departureDateTime = `${year}-${month}-${day}T${hours}:${minutes}:00`;
+
+      const tripToInsert = {
+        driver_id: user.id,
+        origin: data.origin,
+        destination: data.destination,
+        departure_datetime: departureDateTime, // Store combined date and time
+        seats_available: data.seats, // Assuming column name in Supabase
+      };
+
+      const { error } = await supabase.from('trips').insert([tripToInsert]);
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "¡Viaje Publicado!",
+        description: `Tu viaje de ${data.origin} a ${data.destination} el ${format(data.date, "PPP", { locale: es })} a las ${data.time} ha sido publicado.`,
+        variant: "default"
+      });
+      form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "10:00" });
+    } catch (error: any) {
+      console.error("Error publishing trip:", error);
+      toast({
+        title: "Error al Publicar Viaje",
+        description: error.message || "No se pudo guardar el viaje en la base de datos.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   return (
@@ -126,7 +169,7 @@ export default function PublishTripPage() {
                     </FormLabel>
                     <Select 
                       onValueChange={field.onChange} 
-                      value={field.value} // Use value instead of defaultValue for controlled component
+                      value={field.value}
                       disabled={isLoadingLocations}
                     >
                       <FormControl>
@@ -162,7 +205,7 @@ export default function PublishTripPage() {
                     </FormLabel>
                     <Select 
                       onValueChange={field.onChange} 
-                      value={field.value} // Use value instead of defaultValue
+                      value={field.value}
                       disabled={isLoadingLocations}
                     >
                       <FormControl>
@@ -190,48 +233,65 @@ export default function PublishTripPage() {
               />
             </div>
 
-            <FormField
-              control={form.control}
-              name="date"
-              render={({ field }) => (
-                <FormItem className="flex flex-col">
-                  <FormLabel className="flex items-center gap-1">
-                     <CalendarIcon className="h-4 w-4 text-muted-foreground" /> Fecha del Viaje
-                  </FormLabel>
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <FormControl>
-                        <Button
-                          variant={"outline"}
-                          className={cn(
-                            "w-full pl-3 text-left font-normal",
-                            !field.value && "text-muted-foreground"
-                          )}
-                        >
-                          {field.value ? (
-                            format(field.value, "PPP", { locale: es })
-                          ) : (
-                            <span>Elige una fecha</span>
-                          )}
-                          <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
-                        </Button>
-                      </FormControl>
-                    </PopoverTrigger>
-                    <PopoverContent className="w-auto p-0" align="start">
-                      <Calendar
-                        mode="single"
-                        selected={field.value}
-                        onSelect={field.onChange}
-                        disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) } 
-                        initialFocus
-                        locale={es}
-                      />
-                    </PopoverContent>
-                  </Popover>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <FormField
+                control={form.control}
+                name="date"
+                render={({ field }) => (
+                  <FormItem className="flex flex-col">
+                    <FormLabel className="flex items-center gap-1">
+                       <CalendarIcon className="h-4 w-4 text-muted-foreground" /> Fecha del Viaje
+                    </FormLabel>
+                    <Popover>
+                      <PopoverTrigger asChild>
+                        <FormControl>
+                          <Button
+                            variant={"outline"}
+                            className={cn(
+                              "w-full pl-3 text-left font-normal",
+                              !field.value && "text-muted-foreground"
+                            )}
+                          >
+                            {field.value ? (
+                              format(field.value, "PPP", { locale: es })
+                            ) : (
+                              <span>Elige una fecha</span>
+                            )}
+                            <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
+                          </Button>
+                        </FormControl>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-auto p-0" align="start">
+                        <Calendar
+                          mode="single"
+                          selected={field.value}
+                          onSelect={field.onChange}
+                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) } 
+                          initialFocus
+                          locale={es}
+                        />
+                      </PopoverContent>
+                    </Popover>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="time"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="flex items-center gap-1">
+                      <Clock className="h-4 w-4 text-muted-foreground" /> Hora del Viaje
+                    </FormLabel>
+                    <FormControl>
+                      <Input type="time" {...field} className="w-full" />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            </div>
 
             <FormField
               control={form.control}
@@ -260,5 +320,3 @@ export default function PublishTripPage() {
     </Card>
   );
 }
-
-    
