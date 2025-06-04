@@ -9,7 +9,7 @@ import { ROLES, Role as RoleType } from "@/lib/constants";
 import { Car, User, LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect } from "react";
-import { Skeleton } from "@/components/ui/skeleton"; // Import Skeleton
+import { Skeleton } from "@/components/ui/skeleton";
 
 export default function RoleSelectionPage() {
   const { user, role, setRole, isLoading, logout, isAuthenticated } = useAuth();
@@ -18,15 +18,23 @@ export default function RoleSelectionPage() {
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
-        router.replace("/"); // Redirigir a login si no está autenticado
-      } else if (role) {
-        router.replace("/dashboard"); // Redirigir a dashboard si el rol ya está establecido
+        // AuthRedirector ahora maneja esta redirección si el usuario no está autenticado
+        // y llega a /role-selection. Sin embargo, mantenerlo aquí es una buena salvaguarda.
+        console.log("[RoleSelectionPage] User not authenticated, redirecting to /");
+        router.replace("/");
       }
+      // Si está autenticado, AuthRedirector ya ha decidido si debe estar aquí
+      // o en el dashboard/login. Si está aquí (en /role-selection) y autenticado,
+      // se le debe permitir elegir un rol, incluso si ya tiene uno (para cambiarlo).
     }
-  }, [isLoading, isAuthenticated, role, router]);
+  }, [isLoading, isAuthenticated, router]);
 
-  if (isLoading || !isAuthenticated || role) {
-    // Mostrar un esqueleto o un mensaje de carga más elaborado
+
+  // El esqueleto de carga principal es manejado por AuthRedirector.
+  // Aquí podríamos mostrar un esqueleto específico para el contenido de RoleSelectionPage si isLoading es true
+  // Y AuthRedirector ya ha determinado que el usuario DEBE estar en esta página.
+  // Por ahora, el AuthRedirector es suficiente.
+  if (isLoading && !user) { // Un chequeo adicional si isLoading pero user todavía no está cargado.
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
         <Skeleton className="h-12 w-12 rounded-full mb-4" />
