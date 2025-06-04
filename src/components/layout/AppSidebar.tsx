@@ -13,7 +13,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES } from "@/lib/constants";
-import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle } from "lucide-react"; // Removed UsersCog
+import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, UsersCog } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -30,9 +30,9 @@ const passengerLinks = [
   { href: "/dashboard/passenger/saved-routes", label: "Rutas Guardadas", icon: Bookmark },
 ];
 
-// const utilityLinks = [
-//   { href: "/role-selection", label: "Cambiar Rol", icon: UsersCog },
-// ];
+const utilityLinks = [
+  { href: "/role-selection", label: "Cambiar Rol", icon: UsersCog },
+];
 
 export function AppSidebar() {
   const { role, user } = useAuth();
@@ -84,7 +84,7 @@ export function AppSidebar() {
               </Link>
             </SidebarMenuItem>
           ))}
-           {/* {utilityLinks.map((link) => (
+           {utilityLinks.map((link) => (
             <SidebarMenuItem key={link.href}>
               <Link href={link.href} legacyBehavior passHref>
                 <SidebarMenuButton
@@ -99,7 +99,7 @@ export function AppSidebar() {
                 </SidebarMenuButton>
               </Link>
             </SidebarMenuItem>
-          ))} */}
+          ))}
         </SidebarMenu>
       </SidebarContent>
        <SidebarFooter className="p-4 border-t mt-auto">
