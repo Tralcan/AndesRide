@@ -13,7 +13,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES } from "@/lib/constants";
-import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle } from "lucide-react"; // Car icon was here, but not used in links
+import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, UsersCog } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -30,11 +30,15 @@ const passengerLinks = [
   { href: "/dashboard/passenger/saved-routes", label: "Rutas Guardadas", icon: Bookmark },
 ];
 
+const utilityLinks = [
+  { href: "/role-selection", label: "Cambiar Rol", icon: UsersCog },
+];
+
 export function AppSidebar() {
   const { role, user } = useAuth();
   const pathname = usePathname();
 
-  const links = role === ROLES.DRIVER ? driverLinks : passengerLinks;
+  const roleSpecificLinks = role === ROLES.DRIVER ? driverLinks : passengerLinks;
   const roleName = role === ROLES.DRIVER ? "Conductor" : "Pasajero";
   const displayName = user?.profile?.fullName || user?.email || "Usuario";
 
@@ -64,12 +68,28 @@ export function AppSidebar() {
               </Link>
             </SidebarMenuItem>
           ))}
-          {links.map((link) => (
+          {roleSpecificLinks.map((link) => (
             <SidebarMenuItem key={link.href}>
               <Link href={link.href} legacyBehavior passHref>
                 <SidebarMenuButton
                   asChild
                   isActive={pathname === link.href || pathname.startsWith(link.href + '/')}
+                  tooltip={link.label}
+                >
+                  <a>
+                    <link.icon />
+                    <span>{link.label}</span>
+                  </a>
+                </SidebarMenuButton>
+              </Link>
+            </SidebarMenuItem>
+          ))}
+           {utilityLinks.map((link) => (
+            <SidebarMenuItem key={link.href}>
+              <Link href={link.href} legacyBehavior passHref>
+                <SidebarMenuButton
+                  asChild
+                  isActive={pathname === link.href}
                   tooltip={link.label}
                 >
                   <a>
