@@ -14,7 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/lib/supabaseClient";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format, parseISO } from "date-fns";
+import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, Users, PlusCircle, Clock } from "lucide-react";
 import { useForm } from "react-hook-form";
@@ -94,37 +94,43 @@ export default function PublishTripPage() {
     if (!user?.id) {
       toast({
         title: "Error de Autenticación",
-        description: "No se pudo identificar al conductor. Por favor, inicia sesión de nuevo.",
+        description: "No se pudo identificar al conductor (ID no encontrado). Por favor, inicia sesión de nuevo.",
         variant: "destructive",
       });
+      console.error("PublishTripPage: onSubmit called but user.id is missing. User object:", user);
       return;
     }
     setIsSubmitting(true);
+    console.log("[PublishTripPage] Form data submitted:", data);
+    console.log("[PublishTripPage] User ID:", user.id);
 
     try {
-      // Combine date and time into a full ISO string
       const year = data.date.getFullYear();
-      const month = (data.date.getMonth() + 1).toString().padStart(2, '0'); // Month is 0-indexed
+      const month = (data.date.getMonth() + 1).toString().padStart(2, '0');
       const day = data.date.getDate().toString().padStart(2, '0');
       const [hours, minutes] = data.time.split(':');
       
-      // Construct date string in YYYY-MM-DDTHH:mm:ss format (seconds can be 00)
-      // Supabase handles timezone conversion if your column is timestamptz
       const departureDateTime = `${year}-${month}-${day}T${hours}:${minutes}:00`;
+      console.log("[PublishTripPage] Calculated departureDateTime:", departureDateTime);
 
       const tripToInsert = {
         driver_id: user.id,
         origin: data.origin,
         destination: data.destination,
-        departure_datetime: departureDateTime, // Store combined date and time
-        seats_available: data.seats, // Assuming column name in Supabase
+        departure_datetime: departureDateTime,
+        seats_available: data.seats,
       };
 
-      const { error } = await supabase.from('trips').insert([tripToInsert]);
+      console.log("[PublishTripPage] Attempting to insert trip:", JSON.stringify(tripToInsert, null, 2));
+
+      const { data: insertedData, error } = await supabase.from('trips').insert([tripToInsert]).select();
 
       if (error) {
-        throw error;
+        console.error("[PublishTripPage] Supabase insert error:", JSON.stringify(error, null, 2));
+        throw error; // Re-throw to be caught by the catch block
       }
+
+      console.log("[PublishTripPage] Supabase insert success. Returned data:", insertedData);
 
       toast({
         title: "¡Viaje Publicado!",
@@ -133,10 +139,10 @@ export default function PublishTripPage() {
       });
       form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "10:00" });
     } catch (error: any) {
-      console.error("Error publishing trip:", error);
+      console.error("[PublishTripPage] Error publishing trip in catch block:", error);
       toast({
         title: "Error al Publicar Viaje",
-        description: error.message || "No se pudo guardar el viaje en la base de datos.",
+        description: error.message ? error.message : "Ocurrió un error desconocido al guardar el viaje. Revisa la consola para más detalles.",
         variant: "destructive",
       });
     } finally {
@@ -320,3 +326,4 @@ export default function PublishTripPage() {
     </Card>
   );
 }
+
