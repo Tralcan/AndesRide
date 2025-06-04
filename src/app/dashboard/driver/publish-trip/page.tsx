@@ -10,7 +10,6 @@ import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { LOCATIONS, Location } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
@@ -18,15 +17,13 @@ import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, Users, PlusCircle } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { supabase } from "@/lib/supabaseClient"; // Import Supabase client
 
+// Updated Zod schema
 const TripFormSchema = z.object({
-  origin: z.custom<Location>((val) => LOCATIONS.includes(val as Location), {
-    message: "Por favor selecciona un origen válido.",
-  }),
-  destination: z.custom<Location>((val) => LOCATIONS.includes(val as Location), {
-    message: "Por favor selecciona un destino válido.",
-  }),
+  origin: z.string().min(1, "Por favor selecciona un origen."),
+  destination: z.string().min(1, "Por favor selecciona un destino."),
   date: z.date({
     required_error: "Se requiere una fecha para el viaje.",
   }),
@@ -36,16 +33,59 @@ const TripFormSchema = z.object({
   path: ["destination"],
 });
 
+interface LocationOption {
+  nombre: string;
+}
+
 export default function PublishTripPage() {
   const { toast } = useToast();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [origins, setOrigins] = useState<LocationOption[]>([]);
+  const [destinations, setDestinations] = useState<LocationOption[]>([]);
+  const [isLoadingLocations, setIsLoadingLocations] = useState(true);
   
   const form = useForm<z.infer<typeof TripFormSchema>>({
     resolver: zodResolver(TripFormSchema),
     defaultValues: {
       seats: 1,
+      origin: "", // Initialize as empty string
+      destination: "", // Initialize as empty string
     },
   });
+
+  useEffect(() => {
+    async function fetchLocations() {
+      setIsLoadingLocations(true);
+      try {
+        const { data: originsData, error: originsError } = await supabase
+          .from('origen') // Assuming your table is named 'origen'
+          .select('nombre') // Assuming the column with location name is 'nombre'
+          .eq('estado', true);
+
+        if (originsError) throw originsError;
+        setOrigins(originsData || []);
+
+        const { data: destinationsData, error: destinationsError } = await supabase
+          .from('destino') // Assuming your table is named 'destino'
+          .select('nombre') // Assuming the column with location name is 'nombre'
+          .eq('estado', true);
+
+        if (destinationsError) throw destinationsError;
+        setDestinations(destinationsData || []);
+
+      } catch (error: any) {
+        console.error("Error fetching locations:", error);
+        toast({
+          title: "Error al Cargar Ubicaciones",
+          description: error.message || "No se pudieron obtener los orígenes/destinos.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoadingLocations(false);
+      }
+    }
+    fetchLocations();
+  }, [toast]);
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
     setIsSubmitting(true);
@@ -57,7 +97,7 @@ export default function PublishTripPage() {
       description: `Tu viaje de ${data.origin} a ${data.destination} el ${format(data.date, "PPP", { locale: es })} ha sido publicado exitosamente.`,
       variant: "default"
     });
-    form.reset({ seats: 1 }); 
+    form.reset({ seats: 1, origin: "", destination: "", date: undefined }); 
     setIsSubmitting(false);
   }
 
@@ -84,18 +124,28 @@ export default function PublishTripPage() {
                     <FormLabel className="flex items-center gap-1">
                       <MapPin className="h-4 w-4 text-muted-foreground" /> Origen
                     </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select 
+                      onValueChange={field.onChange} 
+                      value={field.value} // Use value instead of defaultValue for controlled component
+                      disabled={isLoadingLocations}
+                    >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Selecciona ciudad de origen" />
+                          <SelectValue placeholder={isLoadingLocations ? "Cargando orígenes..." : "Selecciona ciudad de origen"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {LOCATIONS.map((location) => (
-                          <SelectItem key={`origin-${location}`} value={location}>
-                            {location}
-                          </SelectItem>
-                        ))}
+                        {isLoadingLocations ? (
+                          <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                        ) : origins.length === 0 ? (
+                           <SelectItem value="no-options" disabled>No hay orígenes disponibles</SelectItem>
+                        ) : (
+                          origins.map((location) => (
+                            <SelectItem key={`origin-${location.nombre}`} value={location.nombre}>
+                              {location.nombre}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -110,18 +160,28 @@ export default function PublishTripPage() {
                     <FormLabel className="flex items-center gap-1">
                       <MapPin className="h-4 w-4 text-muted-foreground" /> Destino
                     </FormLabel>
-                    <Select onValueChange={field.onChange} defaultValue={field.value}>
+                    <Select 
+                      onValueChange={field.onChange} 
+                      value={field.value} // Use value instead of defaultValue
+                      disabled={isLoadingLocations}
+                    >
                       <FormControl>
                         <SelectTrigger>
-                          <SelectValue placeholder="Selecciona ciudad de destino" />
+                          <SelectValue placeholder={isLoadingLocations ? "Cargando destinos..." : "Selecciona ciudad de destino"} />
                         </SelectTrigger>
                       </FormControl>
                       <SelectContent>
-                        {LOCATIONS.map((location) => (
-                          <SelectItem key={`destination-${location}`} value={location}>
-                            {location}
-                          </SelectItem>
-                        ))}
+                        {isLoadingLocations ? (
+                           <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                        ) : destinations.length === 0 ? (
+                           <SelectItem value="no-options" disabled>No hay destinos disponibles</SelectItem>
+                        ): (
+                          destinations.map((location) => (
+                            <SelectItem key={`destination-${location.nombre}`} value={location.nombre}>
+                              {location.nombre}
+                            </SelectItem>
+                          ))
+                        )}
                       </SelectContent>
                     </Select>
                     <FormMessage />
@@ -182,7 +242,7 @@ export default function PublishTripPage() {
                     <Users className="h-4 w-4 text-muted-foreground" /> Asientos Disponibles
                   </FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="ej: 2" {...field} min="1" max="10" />
+                    <Input type="number" placeholder="ej: 2" {...field} onChange={e => field.onChange(parseInt(e.target.value,10) || 0)} min="1" max="10" />
                   </FormControl>
                   <FormDescription>
                     Ingresa el número de asientos que ofreces para este viaje.
@@ -191,7 +251,7 @@ export default function PublishTripPage() {
                 </FormItem>
               )}
             />
-            <Button type="submit" className="w-full md:w-auto" size="lg" disabled={isSubmitting}>
+            <Button type="submit" className="w-full md:w-auto" size="lg" disabled={isSubmitting || isLoadingLocations}>
               {isSubmitting ? "Publicando..." : "Publicar Viaje"}
             </Button>
           </form>
@@ -200,3 +260,5 @@ export default function PublishTripPage() {
     </Card>
   );
 }
+
+    
