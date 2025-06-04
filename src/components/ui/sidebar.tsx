@@ -142,7 +142,7 @@ const SidebarProvider = React.forwardRef<
               } as React.CSSProperties
             }
             className={cn(
-              "group/sidebar-wrapper flex w-full has-[[data-variant=inset]]:bg-sidebar", // Removed min-h-svh
+              "group/sidebar-wrapper w-full has-[[data-variant=inset]]:bg-sidebar", // REMOVED 'flex'
               className
             )}
             ref={ref}
@@ -176,7 +176,17 @@ const Sidebar = React.forwardRef<
     },
     ref
   ) => {
-    const { isMobile, state, openMobile, setOpenMobile } = useSidebar()
+    const { isMobile, state, openMobile, setOpenMobile, setOpen } = useSidebar()
+
+    const handleMenuItemClick = () => {
+      if (isMobile) {
+        setOpenMobile(false);
+      } else {
+        // Optionally close desktop sidebar as well, or keep it open
+        // setOpen(false); 
+      }
+    };
+
 
     if (collapsible === "none") {
       return (
@@ -188,7 +198,9 @@ const Sidebar = React.forwardRef<
           ref={ref}
           {...props}
         >
-          {children}
+          {React.Children.map(children, child =>
+            React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onMenuItemClick: handleMenuItemClick }) : child
+          )}
         </div>
       )
     }
@@ -207,7 +219,11 @@ const Sidebar = React.forwardRef<
             }
             side={side}
           >
-            <div className="flex h-full w-full flex-col">{children}</div>
+            <div className="flex h-full w-full flex-col">
+             {React.Children.map(children, child =>
+                React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onMenuItemClick: handleMenuItemClick }) : child
+             )}
+            </div>
           </SheetContent>
         </Sheet>
       )
@@ -251,7 +267,9 @@ const Sidebar = React.forwardRef<
             data-sidebar="sidebar"
             className="flex h-full w-full flex-col bg-sidebar group-data-[variant=floating]:rounded-lg group-data-[variant=floating]:border group-data-[variant=floating]:border-sidebar-border group-data-[variant=floating]:shadow"
           >
-            {children}
+           {React.Children.map(children, child =>
+             React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onMenuItemClick: handleMenuItemClick }) : child
+           )}
           </div>
         </div>
       </div>
@@ -324,7 +342,7 @@ const SidebarInset = React.forwardRef<
       ref={ref}
       className={cn(
         "relative flex flex-1 flex-col bg-background",
-        "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))]", 
+        "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))]",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className
       )}
@@ -354,8 +372,8 @@ SidebarInput.displayName = "SidebarInput"
 
 const SidebarHeader = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+  React.ComponentProps<"div"> & { onMenuItemClick?: () => void }
+>(({ className, onMenuItemClick, ...props }, ref) => {
   return (
     <div
       ref={ref}
@@ -369,8 +387,8 @@ SidebarHeader.displayName = "SidebarHeader"
 
 const SidebarFooter = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+  React.ComponentProps<"div"> & { onMenuItemClick?: () => void }
+>(({ className, onMenuItemClick, ...props }, ref) => {
   return (
     <div
       ref={ref}
@@ -399,8 +417,8 @@ SidebarSeparator.displayName = "SidebarSeparator"
 
 const SidebarContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+  React.ComponentProps<"div"> & { onMenuItemClick?: () => void }
+>(({ className, onMenuItemClick, children, ...props }, ref) => {
   return (
     <div
       ref={ref}
@@ -410,22 +428,30 @@ const SidebarContent = React.forwardRef<
         className
       )}
       {...props}
-    />
+    >
+      {React.Children.map(children, child =>
+        React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onMenuItemClick }) : child
+      )}
+    </div>
   )
 })
 SidebarContent.displayName = "SidebarContent"
 
 const SidebarGroup = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => {
+  React.ComponentProps<"div"> & { onMenuItemClick?: () => void }
+>(({ className, onMenuItemClick, children, ...props }, ref) => {
   return (
     <div
       ref={ref}
       data-sidebar="group"
       className={cn("relative flex w-full min-w-0 flex-col p-2", className)}
       {...props}
-    />
+    >
+     {React.Children.map(children, child =>
+        React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onMenuItemClick }) : child
+     )}
+    </div>
   )
 })
 SidebarGroup.displayName = "SidebarGroup"
@@ -476,40 +502,54 @@ SidebarGroupAction.displayName = "SidebarGroupAction"
 
 const SidebarGroupContent = React.forwardRef<
   HTMLDivElement,
-  React.ComponentProps<"div">
->(({ className, ...props }, ref) => (
+  React.ComponentProps<"div"> & { onMenuItemClick?: () => void }
+>(({ className, onMenuItemClick, children, ...props }, ref) => (
   <div
     ref={ref}
     data-sidebar="group-content"
     className={cn("w-full text-sm", className)}
     {...props}
-  />
+  >
+    {React.Children.map(children, child =>
+      React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onMenuItemClick }) : child
+    )}
+  </div>
 ))
 SidebarGroupContent.displayName = "SidebarGroupContent"
 
 const SidebarMenu = React.forwardRef<
   HTMLUListElement,
-  React.ComponentProps<"ul">
->(({ className, ...props }, ref) => (
+  React.ComponentProps<"ul"> & { onMenuItemClick?: () => void }
+>(({ className, onMenuItemClick, children, ...props }, ref) => (
   <ul
     ref={ref}
     data-sidebar="menu"
     className={cn("flex w-full min-w-0 flex-col gap-1", className)}
     {...props}
-  />
+  >
+  {React.Children.map(children, child =>
+    React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onMenuItemClick }) : child
+  )}
+  </ul>
 ))
 SidebarMenu.displayName = "SidebarMenu"
 
 const SidebarMenuItem = React.forwardRef<
   HTMLLIElement,
-  React.ComponentProps<"li">
->(({ className, ...props }, ref) => (
+  React.ComponentProps<"li"> & { onMenuItemClick?: () => void }
+>(({ className, onMenuItemClick, children, ...props }, ref) => (
   <li
     ref={ref}
     data-sidebar="menu-item"
     className={cn("group/menu-item relative", className)}
     {...props}
-  />
+  >
+    {React.Children.map(children, child =>
+      React.isValidElement(child) && child.type === SidebarMenuButton // Pass only to SidebarMenuButton
+        ? React.cloneElement(child as React.ReactElement<any>, { onClick: onMenuItemClick })
+        : child
+    )}
+  </li>
 ))
 SidebarMenuItem.displayName = "SidebarMenuItem"
 
@@ -541,6 +581,7 @@ const SidebarMenuButton = React.forwardRef<
     asChild?: boolean
     isActive?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
+    onClick?: React.MouseEventHandler<HTMLButtonElement>; // Added onClick here
   } & VariantProps<typeof sidebarMenuButtonVariants>
 >(
   (
@@ -551,6 +592,7 @@ const SidebarMenuButton = React.forwardRef<
       size = "default",
       tooltip,
       className,
+      onClick, // Capture onClick
       ...props
     },
     ref
@@ -565,6 +607,7 @@ const SidebarMenuButton = React.forwardRef<
         data-size={size}
         data-active={isActive}
         className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
+        onClick={onClick} // Apply onClick
         {...props}
       />
     )
@@ -686,8 +729,8 @@ SidebarMenuSkeleton.displayName = "SidebarMenuSkeleton"
 
 const SidebarMenuSub = React.forwardRef<
   HTMLUListElement,
-  React.ComponentProps<"ul">
->(({ className, ...props }, ref) => (
+  React.ComponentProps<"ul"> & { onMenuItemClick?: () => void }
+>(({ className, onMenuItemClick, children, ...props }, ref) => (
   <ul
     ref={ref}
     data-sidebar="menu-sub"
@@ -697,14 +740,24 @@ const SidebarMenuSub = React.forwardRef<
       className
     )}
     {...props}
-  />
+  >
+    {React.Children.map(children, child =>
+      React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onMenuItemClick }) : child
+    )}
+  </ul>
 ))
 SidebarMenuSub.displayName = "SidebarMenuSub"
 
 const SidebarMenuSubItem = React.forwardRef<
   HTMLLIElement,
-  React.ComponentProps<"li">
->(({ ...props }, ref) => <li ref={ref} {...props} />)
+  React.ComponentProps<"li"> & { onMenuItemClick?: () => void }
+>(({ onMenuItemClick, children, ...props }, ref) => (
+ <li ref={ref} {...props}>
+    {React.Children.map(children, child =>
+      React.isValidElement(child) ? React.cloneElement(child as React.ReactElement<any>, { onClick: onMenuItemClick }) : child
+    )}
+  </li>
+))
 SidebarMenuSubItem.displayName = "SidebarMenuSubItem"
 
 const SidebarMenuSubButton = React.forwardRef<
@@ -713,8 +766,9 @@ const SidebarMenuSubButton = React.forwardRef<
     asChild?: boolean
     size?: "sm" | "md"
     isActive?: boolean
+    onClick?: React.MouseEventHandler<HTMLAnchorElement>; // Added onClick here
   }
->(({ asChild = false, size = "md", isActive, className, ...props }, ref) => {
+>(({ asChild = false, size = "md", isActive, className, onClick, ...props }, ref) => {
   const Comp = asChild ? Slot : "a"
 
   return (
@@ -723,6 +777,7 @@ const SidebarMenuSubButton = React.forwardRef<
       data-sidebar="menu-sub-button"
       data-size={size}
       data-active={isActive}
+      onClick={onClick} // Apply onClick
       className={cn(
         "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
         "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground",
@@ -763,3 +818,4 @@ export {
   SidebarTrigger,
   useSidebar,
 }
+
