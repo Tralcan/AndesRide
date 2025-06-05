@@ -34,6 +34,7 @@ const generatePromotionalImageFlow = ai.defineFlow(
   },
   async (input) => {
     const promptText = input.customPrompt || `Una imagen de banner promocional vibrante y atractiva para la marca "${input.brandName}", con temática de viajes y aventura en la región andina. Dimensiones ideales 1200x400. Estilo moderno, limpio y que invite a la acción.`;
+    console.log(`[generatePromotionalImageFlow] Prompt para Genkit: ${promptText}`);
 
     try {
       const {media} = await ai.generate({
@@ -46,13 +47,14 @@ const generatePromotionalImageFlow = ai.defineFlow(
       });
 
       if (!media?.url) {
+        console.error('[generatePromotionalImageFlow] Image generation did not return a valid media URL. Media object:', media);
         throw new Error('Image generation did not return a valid media URL.');
       }
-
+      console.log(`[generatePromotionalImageFlow] Image URI received: ${media.url.substring(0,100)}...`);
       return { imageDataUri: media.url };
 
-    } catch (error) {
-      console.error('Error generating promotional image with Genkit:', error);
+    } catch (error: any) {
+      console.error('[generatePromotionalImageFlow] Error generando imagen promocional con Genkit:', error);
       // Fallback a una imagen placeholder en caso de error
       const fallbackImageDataUri = 'https://placehold.co/1200x400.png?text=Error+Generando+Imagen';
       return { imageDataUri: fallbackImageDataUri };
