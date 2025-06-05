@@ -38,6 +38,9 @@ const MOCK_TRIPS: Trip[] = [
   { id: "4", driverName: "Luis F.", driverAvatar: "https://placehold.co/100x100.png?text=LF", origin: "Medellín", destination: "Bogotá", date: new Date(2024, 7, 20), availableSeats: 4, price: 22 },
 ];
 
+const ANY_ORIGIN_VALUE = "_ANY_ORIGIN_";
+const ANY_DESTINATION_VALUE = "_ANY_DESTINATION_";
+
 export default function SearchTripsPage() {
   const { toast } = useToast();
   const [filteredTrips, setFilteredTrips] = useState<Trip[]>(MOCK_TRIPS);
@@ -48,6 +51,11 @@ export default function SearchTripsPage() {
 
   const form = useForm<z.infer<typeof SearchFiltersSchema>>({
     resolver: zodResolver(SearchFiltersSchema),
+    defaultValues: { // Set default values to undefined to show placeholders initially
+      origin: undefined, 
+      destination: undefined,
+      date: undefined,
+    }
   });
 
   useEffect(() => {
@@ -86,10 +94,10 @@ export default function SearchTripsPage() {
     // Simulate API call / filtering
     setTimeout(() => {
       let trips = MOCK_TRIPS;
-      if (data.origin) {
+      if (data.origin && data.origin !== ANY_ORIGIN_VALUE) {
         trips = trips.filter(trip => trip.origin === data.origin);
       }
-      if (data.destination) {
+      if (data.destination && data.destination !== ANY_DESTINATION_VALUE) {
         trips = trips.filter(trip => trip.destination === data.destination);
       }
       if (data.date) {
@@ -112,9 +120,6 @@ export default function SearchTripsPage() {
       variant: "default"
     });
   };
-
-  // Removed redundant useEffect that was setting filteredTrips(MOCK_TRIPS)
-  // as useState(MOCK_TRIPS) already handles initial state.
 
   return (
     <div className="space-y-8">
@@ -140,7 +145,7 @@ export default function SearchTripsPage() {
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origen</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        value={field.value || ""}
+                        value={field.value} // Let Select handle undefined value for placeholder
                         disabled={isLoadingLocations}
                       >
                         <FormControl>
@@ -150,10 +155,10 @@ export default function SearchTripsPage() {
                         </FormControl>
                         <SelectContent>
                           {isLoadingLocations ? (
-                            <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                            <SelectItem value="loading_placeholder" disabled>Cargando...</SelectItem>
                           ) : (
                             <>
-                              <SelectItem value="">Cualquier Origen</SelectItem>
+                              <SelectItem value={ANY_ORIGIN_VALUE}>Cualquier Origen</SelectItem>
                               {origins.map((location) => (
                                 <SelectItem key={`origin-${location.nombre}`} value={location.nombre}>
                                   {location.nombre}
@@ -175,7 +180,7 @@ export default function SearchTripsPage() {
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destino</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        value={field.value || ""}
+                        value={field.value} // Let Select handle undefined value for placeholder
                         disabled={isLoadingLocations}
                       >
                         <FormControl>
@@ -185,10 +190,10 @@ export default function SearchTripsPage() {
                         </FormControl>
                         <SelectContent>
                           {isLoadingLocations ? (
-                            <SelectItem value="loading" disabled>Cargando...</SelectItem>
+                            <SelectItem value="loading_placeholder_dest" disabled>Cargando...</SelectItem>
                           ) : (
                             <>
-                              <SelectItem value="">Cualquier Destino</SelectItem>
+                              <SelectItem value={ANY_DESTINATION_VALUE}>Cualquier Destino</SelectItem>
                               {destinations.map((location) => (
                                 <SelectItem key={`dest-${location.nombre}`} value={location.nombre}>
                                   {location.nombre}
@@ -233,7 +238,12 @@ export default function SearchTripsPage() {
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => {form.reset({ origin: "", destination: "", date: undefined }); setFilteredTrips(MOCK_TRIPS);}} disabled={isLoading || isLoadingLocations}>
+                <Button type="button" variant="outline" onClick={() => {
+                    form.reset({ origin: undefined, destination: undefined, date: undefined }); 
+                    setFilteredTrips(MOCK_TRIPS);
+                    toast({ title: "Filtros Limpiados", description: "Mostrando todos los viajes."});
+                    }} 
+                    disabled={isLoading || isLoadingLocations}>
                   Limpiar Filtros
                 </Button>
                 <Button type="submit" disabled={isLoading || isLoadingLocations}>
