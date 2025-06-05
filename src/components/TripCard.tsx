@@ -11,11 +11,11 @@ export interface Trip {
   id: string;
   driverName: string;
   driverAvatar: string;
-  origin: string; // Changed from Location type
-  destination: string; // Changed from Location type
+  origin: string; 
+  destination: string; 
   date: Date;
   availableSeats: number;
-  price?: number; // Optional
+  price?: number; 
 }
 
 interface TripCardProps {
@@ -30,8 +30,9 @@ export function TripCard({ trip, onRequestRide }: TripCardProps) {
         <Image 
           src={`https://placehold.co/600x240.png?text=${trip.origin}+a+${trip.destination}`} 
           alt={`Mapa ilustrando el viaje de ${trip.origin} a ${trip.destination}`} 
-          layout="fill" 
-          objectFit="cover"
+          fill
+          className="object-cover"
+          sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
           data-ai-hint="map route"
         />
       </div>
@@ -79,5 +80,4 @@ export function TripCard({ trip, onRequestRide }: TripCardProps) {
     </Card>
   );
 }
-
     

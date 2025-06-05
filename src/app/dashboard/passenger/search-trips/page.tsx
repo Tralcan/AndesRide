@@ -113,9 +113,8 @@ export default function SearchTripsPage() {
     });
   };
 
-  useEffect(() => {
-    setFilteredTrips(MOCK_TRIPS);
-  }, []);
+  // Removed redundant useEffect that was setting filteredTrips(MOCK_TRIPS)
+  // as useState(MOCK_TRIPS) already handles initial state.
 
   return (
     <div className="space-y-8">
@@ -279,5 +278,4 @@ export default function SearchTripsPage() {
     </div>
   );
 }
-
     
