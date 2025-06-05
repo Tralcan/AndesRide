@@ -142,10 +142,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 router.replace("/dashboard");
               }
             } else if (profile && window.location.pathname !== '/role-selection' && window.location.pathname !== '/') {
-              console.log('[AuthContext] Redirecting to /role-selection (profile found, no role after auth change)');
+              // User has a profile entry but no role assigned in it
+              console.log('[AuthContext] Profile exists but no role. Redirecting to /role-selection.');
               router.replace("/role-selection");
             } else if (!profile && event === 'SIGNED_IN' && window.location.pathname !== '/role-selection' && window.location.pathname !== '/') {
-               console.warn('[AuthContext] User signed in but profile not found after auth change. Redirecting to /role-selection.');
+               // User just signed in, and no profile exists yet.
+               console.warn('[AuthContext] User signed in, no profile found. Redirecting to /role-selection.');
                router.replace("/role-selection");
             }
           } else {
@@ -188,7 +190,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
-    const redirectURL = `${window.location.origin}/auth/callback`;
+    // Change: Redirect to origin, let Supabase client handle the fragment.
+    const redirectURL = window.location.origin; 
     console.log("[AuthContext] Constructed redirectTo URL for OAuth:", redirectURL);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
