@@ -1,4 +1,3 @@
-
 // src/app/dashboard/passenger/search-trips/page.tsx
 "use client";
 
@@ -8,55 +7,74 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TripCard, type Trip } from "@/components/TripCard";
+import { TripCard } from "@/components/TripCard"; // Note: Trip type for TripCard will be TripSearchResult now
+import type { TripSearchResult } from "./actions"; // Import the search result type
+import { searchSupabaseTrips } from "./actions"; // Import the server action
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format } from "date-fns";
+import { format as formatDateFns } from "date-fns"; // aliased to avoid conflict
 import { es } from "date-fns/locale/es";
-import { CalendarIcon, MapPin, SearchIcon } from "lucide-react";
-import { useEffect, useState } from "react";
+import { CalendarIcon, MapPin, SearchIcon, Loader2 } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "@/lib/supabaseClient"; // For fetching locations
 
-const SearchFiltersSchema = z.object({
+const SearchFiltersSchemaClient = z.object({
   origin: z.string().optional(),
   destination: z.string().optional(),
-  date: z.date().optional(),
+  date: z.date().optional(), // Client-side form uses Date object
 });
+
+type SearchFiltersClient = z.infer<typeof SearchFiltersSchemaClient>;
 
 interface LocationOption {
   nombre: string;
 }
-
-// Mock data for trips - Ensure these string values match potential dynamic values
-const MOCK_TRIPS: Trip[] = [
-  { id: "1", driverName: "Maria G.", driverAvatar: "https://placehold.co/100x100.png?text=MG", origin: "Bogotá", destination: "Medellín", date: new Date(2024, 7, 15), availableSeats: 2, price: 25 },
-  { id: "2", driverName: "Carlos R.", driverAvatar: "https://placehold.co/100x100.png?text=CR", origin: "Cali", destination: "Pereira", date: new Date(2024, 7, 16), availableSeats: 3, price: 18 },
-  { id: "3", driverName: "Sofia L.", driverAvatar: "https://placehold.co/100x100.png?text=SL", origin: "Barranquilla", destination: "Cartagena", date: new Date(2024, 7, 18), availableSeats: 1, price: 12 },
-  { id: "4", driverName: "Luis F.", driverAvatar: "https://placehold.co/100x100.png?text=LF", origin: "Medellín", destination: "Bogotá", date: new Date(2024, 7, 20), availableSeats: 4, price: 22 },
-];
 
 const ANY_ORIGIN_VALUE = "_ANY_ORIGIN_";
 const ANY_DESTINATION_VALUE = "_ANY_DESTINATION_";
 
 export default function SearchTripsPage() {
   const { toast } = useToast();
-  const [filteredTrips, setFilteredTrips] = useState<Trip[]>(MOCK_TRIPS);
-  const [isLoading, setIsLoading] = useState(false); // For trip search loading
+  const [filteredTrips, setFilteredTrips] = useState<TripSearchResult[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSearching, setIsSearching] = useState(false);
   const [origins, setOrigins] = useState<LocationOption[]>([]);
   const [destinations, setDestinations] = useState<LocationOption[]>([]);
-  const [isLoadingLocations, setIsLoadingLocations] = useState(true); // For location fetching
+  const [isLoadingLocations, setIsLoadingLocations] = useState(true);
 
-  const form = useForm<z.infer<typeof SearchFiltersSchema>>({
-    resolver: zodResolver(SearchFiltersSchema),
-    defaultValues: { // Set default values to undefined to show placeholders initially
-      origin: undefined, 
+  const form = useForm<SearchFiltersClient>({
+    resolver: zodResolver(SearchFiltersSchemaClient),
+    defaultValues: {
+      origin: undefined,
       destination: undefined,
       date: undefined,
     }
   });
+
+  const fetchInitialTrips = useCallback(async () => {
+    setIsLoading(true);
+    try {
+      const trips = await searchSupabaseTrips({}); // Empty filters for initial load
+      setFilteredTrips(trips);
+      if (trips.length === 0) {
+        toast({
+            title: "No hay viajes disponibles",
+            description: "Actualmente no hay viajes futuros publicados. ¡Vuelve más tarde!",
+        });
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error al Cargar Viajes",
+        description: error.message || "No se pudieron cargar los viajes iniciales.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoading(false);
+    }
+  }, [toast]);
 
   useEffect(() => {
     async function fetchLocations() {
@@ -87,39 +105,51 @@ export default function SearchTripsPage() {
       }
     }
     fetchLocations();
-  }, [toast]);
+    fetchInitialTrips();
+  }, [toast, fetchInitialTrips]);
 
-  const onSubmit = (data: z.infer<typeof SearchFiltersSchema>) => {
-    setIsLoading(true);
-    // Simulate API call / filtering
-    setTimeout(() => {
-      let trips = MOCK_TRIPS;
-      if (data.origin && data.origin !== ANY_ORIGIN_VALUE) {
-        trips = trips.filter(trip => trip.origin === data.origin);
-      }
-      if (data.destination && data.destination !== ANY_DESTINATION_VALUE) {
-        trips = trips.filter(trip => trip.destination === data.destination);
-      }
-      if (data.date) {
-        trips = trips.filter(trip => format(trip.date, "yyyy-MM-dd") === format(data.date as Date, "yyyy-MM-dd"));
-      }
+  const onSubmit = async (data: SearchFiltersClient) => {
+    setIsSearching(true);
+    const serverFilters = {
+      origin: data.origin,
+      destination: data.destination,
+      date: data.date ? formatDateFns(data.date, "yyyy-MM-dd") : undefined,
+    };
+
+    try {
+      const trips = await searchSupabaseTrips(serverFilters);
       setFilteredTrips(trips);
-      setIsLoading(false);
       toast({
         title: "Búsqueda Actualizada",
         description: `Se encontraron ${trips.length} viaje(s) que coinciden con tus criterios.`,
       });
-    }, 500);
+    } catch (error: any) {
+       toast({
+        title: "Error en la Búsqueda",
+        description: error.message || "Ocurrió un error al buscar viajes.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsSearching(false);
+    }
   };
   
   const handleRequestRide = (tripId: string) => {
-    const trip = MOCK_TRIPS.find(t => t.id === tripId);
+    const trip = filteredTrips.find(t => t.id === tripId);
     toast({
       title: "¡Viaje Solicitado!",
       description: `Tu solicitud para el viaje de ${trip?.origin} a ${trip?.destination} ha sido enviada a ${trip?.driverName}.`,
       variant: "default"
     });
+    // Future: Implement actual ride request logic (e.g., save to Supabase `trip_requests` table)
   };
+
+  const clearFiltersAndFetchAll = () => {
+    form.reset({ origin: undefined, destination: undefined, date: undefined });
+    fetchInitialTrips(); // Refetch all or default trips
+    toast({ title: "Filtros Limpiados", description: "Mostrando todos los viajes disponibles."});
+  };
+
 
   return (
     <div className="space-y-8">
@@ -145,8 +175,8 @@ export default function SearchTripsPage() {
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origen</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        value={field.value} // Let Select handle undefined value for placeholder
-                        disabled={isLoadingLocations}
+                        value={field.value}
+                        disabled={isLoadingLocations || isSearching}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -180,8 +210,8 @@ export default function SearchTripsPage() {
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destino</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        value={field.value} // Let Select handle undefined value for placeholder
-                        disabled={isLoadingLocations}
+                        value={field.value}
+                        disabled={isLoadingLocations || isSearching}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -222,14 +252,22 @@ export default function SearchTripsPage() {
                                 "w-full pl-3 text-left font-normal",
                                 !field.value && "text-muted-foreground"
                               )}
+                              disabled={isSearching}
                             >
-                              {field.value ? format(field.value, "PPP", { locale: es }) : <span>Cualquier Fecha</span>}
+                              {field.value ? formatDateFns(field.value, "PPP", { locale: es }) : <span>Cualquier Fecha</span>}
                               <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
                             </Button>
                           </FormControl>
                         </PopoverTrigger>
                         <PopoverContent className="w-auto p-0" align="start">
-                          <Calendar mode="single" selected={field.value} onSelect={field.onChange} initialFocus locale={es} />
+                          <Calendar 
+                            mode="single" 
+                            selected={field.value} 
+                            onSelect={field.onChange} 
+                            initialFocus 
+                            locale={es}
+                            disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) || isSearching} 
+                          />
                         </PopoverContent>
                       </Popover>
                       <FormMessage />
@@ -238,16 +276,13 @@ export default function SearchTripsPage() {
                 />
               </div>
               <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={() => {
-                    form.reset({ origin: undefined, destination: undefined, date: undefined }); 
-                    setFilteredTrips(MOCK_TRIPS);
-                    toast({ title: "Filtros Limpiados", description: "Mostrando todos los viajes."});
-                    }} 
-                    disabled={isLoading || isLoadingLocations}>
+                <Button type="button" variant="outline" onClick={clearFiltersAndFetchAll} 
+                    disabled={isSearching || isLoadingLocations || isLoading}>
                   Limpiar Filtros
                 </Button>
-                <Button type="submit" disabled={isLoading || isLoadingLocations}>
-                  {isLoading ? "Buscando..." : "Buscar Viajes"}
+                <Button type="submit" disabled={isSearching || isLoadingLocations || isLoading}>
+                  {isSearching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                  {isSearching ? "Buscando..." : "Buscar Viajes"}
                 </Button>
               </div>
             </form>
@@ -256,31 +291,37 @@ export default function SearchTripsPage() {
       </Card>
 
       {isLoading ? (
-         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {[1,2,3].map(i => (
-            <Card key={i} className="shadow-lg">
-              <CardHeader><div className="h-6 w-3/4 bg-muted rounded animate-pulse"></div></CardHeader>
-              <CardContent className="space-y-2">
-                <div className="h-4 w-full bg-muted rounded animate-pulse"></div>
-                <div className="h-4 w-5/6 bg-muted rounded animate-pulse"></div>
-              </CardContent>
-              <CardFooter><div className="h-10 w-full bg-muted rounded animate-pulse"></div></CardFooter>
-            </Card>
-          ))}
+         <div className="flex justify-center items-center h-64">
+            <Loader2 className="h-12 w-12 animate-spin text-primary" />
+            <p className="ml-4 text-lg text-muted-foreground">Cargando viajes disponibles...</p>
         </div>
       ) : filteredTrips.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredTrips.map((trip) => (
-            <TripCard key={trip.id} trip={trip} onRequestRide={handleRequestRide} />
+            // Adapt TripCard to expect TripSearchResult and handle date formatting
+            <TripCard 
+                key={trip.id} 
+                trip={{
+                    id: trip.id,
+                    driverName: trip.driverName,
+                    driverAvatar: trip.driverAvatar,
+                    origin: trip.origin,
+                    destination: trip.destination,
+                    date: new Date(trip.departure_datetime), // Convert ISO string to Date for TripCard
+                    availableSeats: trip.availableSeats,
+                    // price is not included
+                }} 
+                onRequestRide={handleRequestRide} 
+            />
           ))}
         </div>
       ) : (
-        <Card className="text-center py-12">
+        <Card className="text-center py-12 shadow-md">
           <CardContent>
             <SearchIcon className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-xl font-semibold mb-2">No se Encontraron Viajes</h3>
             <p className="text-muted-foreground">
-              Intenta ajustar tus filtros de búsqueda o vuelve más tarde.
+              Intenta ajustar tus filtros de búsqueda o no hay viajes disponibles actualmente.
             </p>
           </CardContent>
         </Card>
@@ -288,4 +329,3 @@ export default function SearchTripsPage() {
     </div>
   );
 }
-    
