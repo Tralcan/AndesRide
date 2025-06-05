@@ -31,8 +31,8 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
   console.log('[searchSupabaseTrips] Received filters:', JSON.stringify(filters, null, 2));
 
   let queryLogParts: string[] = [];
-  // CORRECCIÓN: Cambiado 'full_name' a 'name'. Ajusta si el nombre de tu columna es diferente.
-  queryLogParts.push("SELECT id, origin, destination, departure_datetime, seats_available, driver_id, profiles (name, avatar_url)");
+  // TEMPORARY CHANGE: Select all from profiles to debug "full_name" issue
+  queryLogParts.push("SELECT id, origin, destination, departure_datetime, seats_available, driver_id, profiles (*)");
   queryLogParts.push("FROM trips");
 
   let whereClauses: string[] = [];
@@ -50,10 +50,7 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
         departure_datetime,
         seats_available,
         driver_id,
-        profiles ( 
-          name, // CORRECCIÓN: Cambiado 'full_name' a 'name'. Ajusta si es otro nombre.
-          avatar_url
-        )
+        profiles (*) // Try selecting all columns from profiles
       `)
       .gt('seats_available', 0)
       .gt('departure_datetime', nowISO);
@@ -76,7 +73,7 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
 
     if (filters.date) {
       try {
-        const searchDate = parseISO(filters.date); // Interpreta YYYY-MM-DD como UTC
+        const searchDate = parseISO(filters.date); 
         if (isNaN(searchDate.getTime())) {
             console.warn(`[searchSupabaseTrips] Invalid date string received: ${filters.date}. Skipping date filter.`);
         } else {
@@ -95,14 +92,13 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
 
     query = query.order('departure_datetime', { ascending: true });
     
-    // Logging de la consulta construida
     console.log("--- Query Construction Log ---");
     const finalWhereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : "";
+    queryLogParts[0] = `SELECT id, origin, destination, departure_datetime, seats_available, driver_id, profiles (*)`; // Update log part
     queryLogParts.push(finalWhereClause);
     queryLogParts.push("ORDER BY departure_datetime ASC");
     queryLogParts.forEach(part => console.log(part));
     console.log("-----------------------------");
-
 
     const { data, error } = await query;
 
@@ -111,22 +107,24 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
       if (error.message.includes("security policy") || error.message.includes("RLS")) {
           console.error("[searchSupabaseTrips] Potential Row Level Security issue. Ensure 'trips' and 'profiles' tables have appropriate SELECT policies for authenticated users or 'anon' role.");
       }
+      if (error.message.includes("column") && error.message.includes("does not exist")){
+        console.error(`[searchSupabaseTrips] Supabase indicates a column does not exist. Original error: ${error.message}`);
+      }
       throw error;
     }
 
     console.log('[searchSupabaseTrips] Raw data from Supabase:', data ? `${data.length} rows` : 'No data');
     if (data && data.length > 0) {
-        console.log('[searchSupabaseTrips] First raw row:', JSON.stringify(data[0], null, 2));
+        console.log('[searchSupabaseTrips] First raw row (with profiles as object):', JSON.stringify(data[0], null, 2));
     }
-
 
     if (!data) {
       return [];
     }
 
     const results: TripSearchResult[] = data.map((trip: any) => {
-      // CORRECCIÓN: Usar 'name' para driverName. Ajusta si es otro nombre.
-      const driverName = trip.profiles?.name || trip.profiles?.full_name || 'Conductor Desconocido'; 
+      // Access full_name from the potentially fully loaded profiles object
+      const driverName = trip.profiles?.full_name || 'Conductor Desconocido'; 
       let driverAvatar = trip.profiles?.avatar_url;
       if (driverAvatar === undefined || driverAvatar === '') {
         driverAvatar = null; 
