@@ -31,7 +31,7 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
   console.log('[searchSupabaseTrips] Received filters:', JSON.stringify(filters, null, 2));
 
   let queryLogParts: string[] = [];
-  // TEMPORARY CHANGE: Select all from profiles to debug "full_name" issue
+  // CAMBIO: Usar profiles(*) para intentar obtener todas las columnas de profiles
   queryLogParts.push("SELECT id, origin, destination, departure_datetime, seats_available, driver_id, profiles (*)");
   queryLogParts.push("FROM trips");
 
@@ -50,7 +50,7 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
         departure_datetime,
         seats_available,
         driver_id,
-        profiles (*) // Try selecting all columns from profiles
+        profiles (*) // Usar wildcard para la tabla profiles
       `)
       .gt('seats_available', 0)
       .gt('departure_datetime', nowISO);
@@ -92,9 +92,9 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
 
     query = query.order('departure_datetime', { ascending: true });
     
-    console.log("--- Query Construction Log ---");
+    console.log("--- Query Construction Log (Client-Side Representation) ---");
     const finalWhereClause = whereClauses.length > 0 ? `WHERE ${whereClauses.join(' AND ')}` : "";
-    queryLogParts[0] = `SELECT id, origin, destination, departure_datetime, seats_available, driver_id, profiles (*)`; // Update log part
+    queryLogParts[0] = `SELECT id, origin, destination, departure_datetime, seats_available, driver_id, profiles (*)`; // Actualizar el log
     queryLogParts.push(finalWhereClause);
     queryLogParts.push("ORDER BY departure_datetime ASC");
     queryLogParts.forEach(part => console.log(part));
@@ -116,6 +116,11 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
     console.log('[searchSupabaseTrips] Raw data from Supabase:', data ? `${data.length} rows` : 'No data');
     if (data && data.length > 0) {
         console.log('[searchSupabaseTrips] First raw row (with profiles as object):', JSON.stringify(data[0], null, 2));
+        if (data[0].profiles) {
+            console.log('[searchSupabaseTrips] Keys in profiles object of first row:', Object.keys(data[0].profiles));
+        } else {
+            console.warn('[searchSupabaseTrips] Profiles object is null or undefined in the first row for trip ID:', data[0].id, 'and driver ID:', data[0].driver_id);
+        }
     }
 
     if (!data) {
@@ -123,17 +128,22 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
     }
 
     const results: TripSearchResult[] = data.map((trip: any) => {
-      // Access full_name from the potentially fully loaded profiles object
+      // Acceder a full_name desde el objeto profiles cargado con (*)
       const driverName = trip.profiles?.full_name || 'Conductor Desconocido'; 
       let driverAvatar = trip.profiles?.avatar_url;
       if (driverAvatar === undefined || driverAvatar === '') {
         driverAvatar = null; 
       }
       
-      if (driverAvatar === null) {
+      // Placeholder avatar logic
+      if (!driverAvatar && driverName !== 'Conductor Desconocido') {
         const initials = (driverName.substring(0, 2) || 'CD').toUpperCase();
         driverAvatar = `https://placehold.co/100x100.png?text=${initials}`;
+      } else if (!driverAvatar) {
+        // Default placeholder if even name is unknown
+        driverAvatar = `https://placehold.co/100x100.png?text=??`;
       }
+
 
       return {
         id: trip.id,
