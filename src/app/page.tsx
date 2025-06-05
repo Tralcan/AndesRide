@@ -4,45 +4,21 @@
 import { Button } from "@/components/ui/button";
 import { Logo } from "@/components/Logo";
 import { AuthRedirector } from "@/components/auth/AuthRedirector";
+import { AuthErrorAlert } from "@/components/auth/AuthErrorAlert"; // Import the new component
 import { useAuth } from "@/hooks/useAuth";
-import { Chrome, Terminal } from "lucide-react"; 
+import { Chrome } from "lucide-react"; 
 import { useToast } from "@/hooks/use-toast";
-import { useEffect } from "react";
-import { useSearchParams } from "next/navigation";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Suspense } from "react"; // Import Suspense
+import { Skeleton } from "@/components/ui/skeleton"; // For fallback
 
 export default function LoginPage() {
   const { login, isLoading } = useAuth();
   const { toast } = useToast();
-  const searchParams = useSearchParams();
-
-  const authErrorParam = searchParams.get('error');
-  const authMessageParam = searchParams.get('message');
-
-  useEffect(() => {
-    if (authErrorParam && authMessageParam) {
-      // Decodificar el mensaje, ya que lo codificamos en la ruta de callback
-      const decodedMessage = decodeURIComponent(authMessageParam);
-      console.log(`[LoginPage] Auth error from URL: ${authErrorParam}, Message: ${decodedMessage}`);
-      // No mostraremos toast aquí, ya que el Alert lo manejará.
-      // Si prefieres un toast, puedes activarlo y quitar el Alert.
-      // toast({
-      //   title: `Error de Autenticación: ${authErrorParam}`,
-      //   description: decodedMessage,
-      //   variant: "destructive",
-      //   duration: 7000,
-      // });
-      // Opcional: Limpiar los parámetros de la URL para que el error no se muestre en recargas.
-      // window.history.replaceState(null, '', window.location.pathname);
-    }
-  }, [authErrorParam, authMessageParam, toast]);
-
+  // useSearchParams and related useEffect are moved to AuthErrorAlert
 
   const handleLogin = async () => {
     const { error } = await login();
     if (error) {
-      // Este toast es para errores directos de la función login()
-      // no para los que vienen de la redirección del callback.
       toast({
         title: "Error de inicio de sesión",
         description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
@@ -64,15 +40,9 @@ export default function LoginPage() {
             Tu compañero de confianza para viajes a través de las montañas y más allá.
           </p>
           
-          {authErrorParam && authMessageParam && (
-            <Alert variant="destructive" className="mb-6 text-left">
-              <Terminal className="h-4 w-4" />
-              <AlertTitle>Error de Autenticación</AlertTitle>
-              <AlertDescription>
-                {decodeURIComponent(authMessageParam)}
-              </AlertDescription>
-            </Alert>
-          )}
+          <Suspense fallback={<Skeleton className="h-20 w-full mb-6" />}>
+            <AuthErrorAlert />
+          </Suspense>
           
           <Button 
             onClick={handleLogin} 
