@@ -58,7 +58,7 @@ const SidebarProvider = React.forwardRef<
 >(
   (
     {
-      defaultOpen = true,
+      defaultOpen = false, // Changed from true to false
       open: openProp,
       onOpenChange: setOpenProp,
       className,
@@ -230,7 +230,7 @@ const Sidebar = React.forwardRef<
       <div
         ref={ref}
         className={cn(
-          "group peer hidden md:block text-sidebar-foreground h-full", 
+          "group peer hidden h-full text-sidebar-foreground md:block",
            className
         )}
         data-state={state}
@@ -240,9 +240,9 @@ const Sidebar = React.forwardRef<
       >
         <div
           className={cn(
-            "duration-200 relative h-full w-[--sidebar-width] bg-transparent transition-[width] ease-linear", 
+            "duration-200 relative h-full w-[--sidebar-width] bg-transparent transition-[width] ease-linear",
             "group-data-[collapsible=offcanvas]:w-0",
-            "group-data-[side=right]:rotate-180", 
+            "group-data-[side=right]:rotate-180",
             variant === "floating" || variant === "inset"
               ? "group-data-[collapsible=icon]:w-[calc(var(--sidebar-width-icon)_+_theme(spacing.4))]"
               : "group-data-[collapsible=icon]:w-[--sidebar-width-icon]"
@@ -337,7 +337,7 @@ const SidebarInset = React.forwardRef<
     <div
       ref={ref}
       className={cn(
-        "relative flex flex-1 flex-col bg-background overflow-hidden", 
+        "relative flex flex-1 flex-col bg-background overflow-hidden",
         "peer-data-[variant=inset]:min-h-[calc(100svh-theme(spacing.4))]",
         "md:peer-data-[variant=inset]:m-2 md:peer-data-[state=collapsed]:peer-data-[variant=inset]:ml-2 md:peer-data-[variant=inset]:ml-0 md:peer-data-[variant=inset]:rounded-xl md:peer-data-[variant=inset]:shadow",
         className
@@ -577,7 +577,7 @@ const SidebarMenuButton = React.forwardRef<
     asChild?: boolean
     isActive?: boolean
     tooltip?: string | React.ComponentProps<typeof TooltipContent>
-    onClick?: React.MouseEventHandler<HTMLButtonElement>; 
+    onClick?: React.MouseEventHandler<HTMLButtonElement>;
   } & VariantProps<typeof sidebarMenuButtonVariants>
 >(
   (
@@ -588,7 +588,7 @@ const SidebarMenuButton = React.forwardRef<
       size = "default",
       tooltip,
       className,
-      onClick, 
+      onClick,
       ...props
     },
     ref
@@ -603,7 +603,7 @@ const SidebarMenuButton = React.forwardRef<
         data-size={size}
         data-active={isActive}
         className={cn(sidebarMenuButtonVariants({ variant, size }), className)}
-        onClick={onClick} 
+        onClick={onClick}
         {...props}
       />
     )
@@ -762,7 +762,7 @@ const SidebarMenuSubButton = React.forwardRef<
     asChild?: boolean
     size?: "sm" | "md"
     isActive?: boolean
-    onClick?: React.MouseEventHandler<HTMLAnchorElement>; 
+    onClick?: React.MouseEventHandler<HTMLAnchorElement>;
   }
 >(({ asChild = false, size = "md", isActive, className, onClick, ...props }, ref) => {
   const Comp = asChild ? Slot : "a"
@@ -773,7 +773,7 @@ const SidebarMenuSubButton = React.forwardRef<
       data-sidebar="menu-sub-button"
       data-size={size}
       data-active={isActive}
-      onClick={onClick} 
+      onClick={onClick}
       className={cn(
         "flex h-7 min-w-0 -translate-x-px items-center gap-2 overflow-hidden rounded-md px-2 text-sidebar-foreground outline-none ring-sidebar-ring hover:bg-sidebar-accent hover:text-sidebar-accent-foreground focus-visible:ring-2 active:bg-sidebar-accent active:text-sidebar-accent-foreground disabled:pointer-events-none disabled:opacity-50 aria-disabled:pointer-events-none aria-disabled:opacity-50 [&>span:last-child]:truncate [&>svg]:size-4 [&>svg]:shrink-0 [&>svg]:text-sidebar-accent-foreground",
         "data-[active=true]:bg-sidebar-accent data-[active=true]:text-sidebar-accent-foreground",
