@@ -21,9 +21,10 @@ async function getActiveBrands(): Promise<BrandFromSupabase[]> {
     .eq('estado', true);
   if (error) {
     console.error("Error fetching active brands:", error);
-    // En un caso real, podrías querer lanzar el error o manejarlo de forma más específica.
-    // Por ahora, devolvemos un array vacío para que el flujo pueda continuar con fallbacks.
     return [];
+  }
+  if (!data || data.length === 0) {
+    console.warn("No active brands found in Supabase. getActiveBrands returning empty array.");
   }
   return data || [];
 }
@@ -34,8 +35,6 @@ function selectWeightedRandomBrand(brands: BrandFromSupabase[]): BrandFromSupaba
   const totalWeight = brands.reduce((sum, brand) => sum + (brand.porcentaje_aparicion || 0), 0);
   
   if (totalWeight <= 0) {
-    // Si todos los pesos son 0 o negativos, o no hay marcas con peso positivo,
-    // selecciona una marca al azar de forma simple.
     return brands[Math.floor(Math.random() * brands.length)];
   }
 
@@ -46,8 +45,6 @@ function selectWeightedRandomBrand(brands: BrandFromSupabase[]): BrandFromSupaba
     }
     randomNum -= (brand.porcentaje_aparicion || 0);
   }
-  // Fallback en caso de errores de redondeo flotante (aunque poco probable con esta lógica),
-  // o si algo sale mal, devuelve la última marca o una al azar.
   return brands[brands.length - 1]; 
 }
 
@@ -55,15 +52,14 @@ export interface PromoDisplayData {
   generatedImageUri: string;
   brandName: string;
   brandLogoUrl: string | null;
-  promoText: string | null;
+  // texto_promocion is now part of the image
   hasError?: boolean;
 }
 
 const FALLBACK_PROMO_DATA: PromoDisplayData = {
   generatedImageUri: 'https://placehold.co/1200x400.png?text=AndesRide',
   brandName: 'AndesRide',
-  brandLogoUrl: null, // Podrías tener un logo de AndesRide por defecto aquí
-  promoText: 'Tu compañero de viaje ideal en la región andina.',
+  brandLogoUrl: null,
   hasError: true,
 };
 
@@ -84,9 +80,10 @@ export async function getDashboardPromoData(): Promise<PromoDisplayData> {
     const genkitInput: GeneratePromotionalImageInput = {
       brandName: selectedBrand.nombre,
       customPrompt: selectedBrand.prompt_ia || undefined,
+      promoText: selectedBrand.texto_promocion || undefined, // Pass promo text to the flow
     };
 
-    console.log(`[actions.ts] Requesting image for brand: ${selectedBrand.nombre}`);
+    console.log(`[actions.ts] Requesting image for brand: ${selectedBrand.nombre} with promo text: ${selectedBrand.texto_promocion}`);
     const imageResult = await generatePromotionalImageForBrand(genkitInput);
     console.log(`[actions.ts] Image URI received: ${imageResult.imageDataUri.substring(0,50)}...`);
 
@@ -95,12 +92,11 @@ export async function getDashboardPromoData(): Promise<PromoDisplayData> {
       generatedImageUri: imageResult.imageDataUri,
       brandName: selectedBrand.nombre,
       brandLogoUrl: selectedBrand.imagen_logo_url,
-      promoText: selectedBrand.texto_promocion,
     };
 
   } catch (error) {
     console.error("Error in getDashboardPromoData:", error);
-    return { ...FALLBACK_PROMO_DATA, hasError: true }; // Devuelve fallback con indicador de error
+    return { ...FALLBACK_PROMO_DATA, hasError: true }; 
   }
 }
 

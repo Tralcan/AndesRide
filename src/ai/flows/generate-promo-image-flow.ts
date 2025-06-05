@@ -14,6 +14,7 @@ import {z} from 'genkit';
 const GeneratePromotionalImageInputSchema = z.object({
   brandName: z.string().describe('The name of the brand for which to generate the image.'),
   customPrompt: z.string().optional().describe('An optional custom prompt to guide image generation. If not provided, a generic prompt will be used.'),
+  promoText: z.string().optional().describe('Optional promotional text to overlay or integrate into the image as a sticker or highlight.'),
 });
 export type GeneratePromotionalImageInput = z.infer<typeof GeneratePromotionalImageInputSchema>;
 
@@ -33,7 +34,12 @@ const generatePromotionalImageFlow = ai.defineFlow(
     outputSchema: GeneratePromotionalImageOutputSchema,
   },
   async (input) => {
-    const promptText = input.customPrompt || `Una imagen de banner promocional vibrante y atractiva para la marca "${input.brandName}", con temática de viajes y aventura en la región andina. Dimensiones ideales 1200x400. Estilo moderno, limpio y que invite a la acción.`;
+    let promptText = input.customPrompt || `Una imagen de banner promocional vibrante y atractiva para la marca "${input.brandName}", con temática de viajes y aventura en la región andina. Dimensiones ideales 1200x400. Estilo moderno, limpio y que invite a la acción.`;
+
+    if (input.promoText) {
+      promptText += ` Incorpora el siguiente texto promocional de forma destacada en la imagen, como un sticker, banner o superposición de texto elegante y legible: "${input.promoText}". Asegúrate de que el texto sea claramente visible y se integre bien con el diseño general de la imagen promocional.`;
+    }
+    
     console.log(`[generatePromotionalImageFlow] Prompt para Genkit: ${promptText}`);
 
     try {
@@ -61,3 +67,4 @@ const generatePromotionalImageFlow = ai.defineFlow(
     }
   }
 );
+

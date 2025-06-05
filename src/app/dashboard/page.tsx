@@ -14,13 +14,11 @@ import { useEffect, useState, useCallback } from "react";
 import { getDashboardPromoData, type PromoDisplayData } from "./actions";
 
 const SESSION_STORAGE_KEY = "dashboardPromoData";
-const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos, por ejemplo, o quitar para que dure toda la sesión
 
 const FALLBACK_INITIAL_PROMO: PromoDisplayData = {
   generatedImageUri: "https://placehold.co/1200x400.png?text=Cargando+promoci%C3%B3n...",
   brandName: "AndesRide",
   brandLogoUrl: null,
-  promoText: "Descubriendo las mejores ofertas para ti.",
 };
 
 export default function DashboardPage() {
@@ -36,13 +34,13 @@ export default function DashboardPage() {
         setPromoData(data);
         sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...data, timestamp: Date.now() }));
       } else {
-        const errorData = { ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Promoci%C3%B3n+no+disponible", promoText: "No hay promociones activas en este momento."};
+        const errorData = { ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Promoci%C3%B3n+no+disponible" };
         setPromoData(errorData);
         sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...errorData, timestamp: Date.now() }));
       }
     } catch (error) {
       console.error("Failed to fetch promo data for dashboard:", error);
-      const errorData = { ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Error+cargando", promoText: "No se pudo cargar la promoción." };
+      const errorData = { ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Error+cargando" };
       setPromoData(errorData);
       sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...errorData, timestamp: Date.now() }));
     } finally {
@@ -54,20 +52,11 @@ export default function DashboardPage() {
     const cachedDataString = sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (cachedDataString) {
       const cachedData = JSON.parse(cachedDataString);
-      // Opcional: lógica de expiración de caché
-      // const currentTime = Date.now();
-      // if (currentTime - cachedData.timestamp < CACHE_DURATION_MS) {
-      //   setPromoData(cachedData);
-      //   setIsLoadingPromo(false);
-      //   return;
-      // }
-      // Sin expiración, simplemente usa lo que hay en sessionStorage para la sesión actual
       setPromoData(cachedData);
       setIsLoadingPromo(false);
       return;
     }
     
-    // Si no hay caché (o si implementaras expiración y ha expirado), fetch data
     fetchAndSetPromoData();
   }, [fetchAndSetPromoData]);
 
@@ -106,10 +95,7 @@ export default function DashboardPage() {
               <Skeleton className="h-[200px] md:h-[300px] lg:h-[400px] w-full rounded-lg" />
               <div className="flex items-center gap-4 pt-2">
                 <Skeleton className="h-[80px] w-[80px] rounded" />
-                <div className="flex-1 space-y-2">
-                  <Skeleton className="h-6 w-1/3" />
-                  <Skeleton className="h-4 w-2/3" />
-                </div>
+                 <Skeleton className="h-6 w-1/3" />
               </div>
             </div>
           ) : (
@@ -144,10 +130,7 @@ export default function DashboardPage() {
                     />
                   </div>
                 )}
-                <div className="flex-1">
-                  <h3 className="text-xl font-semibold text-foreground">{promoData.brandName}</h3>
-                  {promoData.promoText && <p className="text-md text-muted-foreground">{promoData.promoText}</p>}
-                </div>
+                <h3 className="text-xl font-semibold text-foreground">{promoData.brandName}</h3>
               </div>
             </>
           )}
@@ -211,7 +194,6 @@ export default function DashboardPage() {
                 <Link href="/dashboard/driver/manage-trips">Ver Mis Viajes</Link>
               </Button>
             ) : (
-               // Actualizado para enlazar a saved-routes si es pasajero
               <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
                 <Link href="/dashboard/passenger/saved-routes">Ver Rutas Guardadas</Link>
               </Button>
@@ -222,3 +204,4 @@ export default function DashboardPage() {
     </div>
   );
 }
+
