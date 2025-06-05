@@ -189,7 +189,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
     const redirectURL = `${window.location.origin}/auth/callback`;
-    console.log("[AuthContext] redirectTo URL for OAuth:", redirectURL); // Log the constructed URL
+    console.log("[AuthContext] Constructed redirectTo URL for OAuth:", redirectURL);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
