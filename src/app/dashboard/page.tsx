@@ -10,8 +10,11 @@ import { APP_NAME, ROLES } from "@/lib/constants";
 import { Car, User, PlusCircle, Search, ListChecks, Image as ImageIcon, AlertTriangle } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { getDashboardPromoData, type PromoDisplayData } from "./actions";
+
+const SESSION_STORAGE_KEY = "dashboardPromoData";
+const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutos, por ejemplo, o quitar para que dure toda la sesión
 
 const FALLBACK_INITIAL_PROMO: PromoDisplayData = {
   generatedImageUri: "https://placehold.co/1200x400.png?text=Cargando+promoci%C3%B3n...",
@@ -25,25 +28,48 @@ export default function DashboardPage() {
   const [promoData, setPromoData] = useState<PromoDisplayData>(FALLBACK_INITIAL_PROMO);
   const [isLoadingPromo, setIsLoadingPromo] = useState(true);
 
-  useEffect(() => {
-    async function fetchPromo() {
-      setIsLoadingPromo(true);
-      try {
-        const data = await getDashboardPromoData();
-        if (data) {
-          setPromoData(data);
-        } else {
-          setPromoData({ ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Promoci%C3%B3n+no+disponible", promoText: "No hay promociones activas en este momento."});
-        }
-      } catch (error) {
-        console.error("Failed to fetch promo data for dashboard:", error);
-        setPromoData({ ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Error+cargando", promoText: "No se pudo cargar la promoción." });
-      } finally {
-        setIsLoadingPromo(false);
+  const fetchAndSetPromoData = useCallback(async () => {
+    setIsLoadingPromo(true);
+    try {
+      const data = await getDashboardPromoData();
+      if (data) {
+        setPromoData(data);
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...data, timestamp: Date.now() }));
+      } else {
+        const errorData = { ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Promoci%C3%B3n+no+disponible", promoText: "No hay promociones activas en este momento."};
+        setPromoData(errorData);
+        sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...errorData, timestamp: Date.now() }));
       }
+    } catch (error) {
+      console.error("Failed to fetch promo data for dashboard:", error);
+      const errorData = { ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Error+cargando", promoText: "No se pudo cargar la promoción." };
+      setPromoData(errorData);
+      sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...errorData, timestamp: Date.now() }));
+    } finally {
+      setIsLoadingPromo(false);
     }
-    fetchPromo();
   }, []);
+
+  useEffect(() => {
+    const cachedDataString = sessionStorage.getItem(SESSION_STORAGE_KEY);
+    if (cachedDataString) {
+      const cachedData = JSON.parse(cachedDataString);
+      // Opcional: lógica de expiración de caché
+      // const currentTime = Date.now();
+      // if (currentTime - cachedData.timestamp < CACHE_DURATION_MS) {
+      //   setPromoData(cachedData);
+      //   setIsLoadingPromo(false);
+      //   return;
+      // }
+      // Sin expiración, simplemente usa lo que hay en sessionStorage para la sesión actual
+      setPromoData(cachedData);
+      setIsLoadingPromo(false);
+      return;
+    }
+    
+    // Si no hay caché (o si implementaras expiración y ha expirado), fetch data
+    fetchAndSetPromoData();
+  }, [fetchAndSetPromoData]);
 
   const getGreeting = () => {
     const hour = new Date().getHours();
@@ -77,7 +103,7 @@ export default function DashboardPage() {
         <CardContent className="space-y-4">
           {isLoadingPromo ? (
             <div className="space-y-4">
-              <Skeleton className="h-[400px] w-full rounded-lg" />
+              <Skeleton className="h-[200px] md:h-[300px] lg:h-[400px] w-full rounded-lg" />
               <div className="flex items-center gap-4 pt-2">
                 <Skeleton className="h-[80px] w-[80px] rounded" />
                 <div className="flex-1 space-y-2">
@@ -86,44 +112,37 @@ export default function DashboardPage() {
                 </div>
               </div>
             </div>
-          ) : promoData.hasError && promoData.generatedImageUri.includes("placehold.co") ? (
-             <div className="relative group">
-              <Image
-                src={promoData.generatedImageUri}
-                alt={`Promoción para ${promoData.brandName}`}
-                width={1200}
-                height={400}
-                className="rounded-lg object-cover w-full"
-                priority
-              />
-              <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center rounded-lg opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                  <AlertTriangle className="h-12 w-12 text-yellow-400 mb-2"/>
-                  <p className="text-white text-center text-lg px-4">No se pudo generar la imagen promocional. Mostrando imagen por defecto.</p>
-              </div>
-            </div>
           ) : (
             <>
-              <div className="relative">
+              <div className="relative group w-full h-[200px] md:h-[300px] lg:h-[400px] rounded-lg overflow-hidden">
                 <Image
                   src={promoData.generatedImageUri}
                   alt={`Promoción para ${promoData.brandName}`}
-                  width={1200}
-                  height={400}
-                  className="rounded-lg object-cover w-full"
+                  fill
+                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+                  className="object-cover"
                   data-ai-hint="promotional banner"
                   priority
                 />
+                {promoData.hasError && promoData.generatedImageUri.includes("placehold.co") && (
+                  <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+                    <AlertTriangle className="h-12 w-12 text-yellow-400 mb-2"/>
+                    <p className="text-white text-center text-lg px-4">No se pudo generar la imagen promocional. Mostrando imagen por defecto.</p>
+                  </div>
+                )}
               </div>
               <div className="flex items-center gap-4 pt-2">
                 {promoData.brandLogoUrl && (
-                  <Image
-                    src={promoData.brandLogoUrl}
-                    alt={`Logo ${promoData.brandName}`}
-                    width={80}
-                    height={80}
-                    className="rounded object-contain"
-                    data-ai-hint="brand logo"
-                  />
+                  <div className="relative w-20 h-20">
+                    <Image
+                        src={promoData.brandLogoUrl}
+                        alt={`Logo ${promoData.brandName}`}
+                        fill
+                        sizes="80px"
+                        className="rounded object-contain"
+                        data-ai-hint="brand logo"
+                    />
+                  </div>
                 )}
                 <div className="flex-1">
                   <h3 className="text-xl font-semibold text-foreground">{promoData.brandName}</h3>
