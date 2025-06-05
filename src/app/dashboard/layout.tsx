@@ -44,7 +44,7 @@ export default function DashboardLayout({
         <AppSidebar />
         {/* This div wraps the main content area (header + scrollable content) */}
         {/* It's a flex item that grows (flex-1) and manages its own overflow. */}
-        <div className="flex flex-col flex-1 overflow-hidden"> 
+        <div className="flex flex-col flex-1"> {/* REMOVED overflow-hidden */}
           <AppHeader />
           <SidebarInset> {/* SidebarInset now renders a div */}
             <main className="flex-1 p-4 sm:p-6 md:p-8 overflow-auto">
