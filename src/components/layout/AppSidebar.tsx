@@ -9,7 +9,8 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
-  SidebarFooter
+  SidebarFooter,
+  useSidebar, // Import useSidebar
 } from "@/components/ui/sidebar";
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
@@ -37,8 +38,22 @@ const utilityLinks = [
 ];
 
 export function AppSidebar() {
-  const { role, user } = useAuth();
+  const { role, user } = useAuth(); // For role and user info
+  const { isMobile, setOpen, setOpenMobile, open } = useSidebar(); // For sidebar state control
   const pathname = usePathname();
+
+  const handleMenuItemClick = () => {
+    if (isMobile) {
+      setOpenMobile(false);
+    } else {
+      // For desktop, if the sidebar is open, set 'open' to false.
+      // The Sidebar component's rendering logic based on its 'collapsible' prop
+      // and 'open' state will determine if it visually collapses/hides or does nothing.
+      if (open) {
+        setOpen(false);
+      }
+    }
+  };
 
   const roleSpecificLinks = role === ROLES.DRIVER ? driverLinks : passengerLinks;
   const roleName = role === ROLES.DRIVER ? "Conductor" : "Pasajero";
@@ -61,6 +76,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === link.href}
                   tooltip={link.label}
+                  onClick={handleMenuItemClick} // Add onClick here
                 >
                   <a>
                     <link.icon />
@@ -77,6 +93,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === link.href || pathname.startsWith(link.href + '/')}
                   tooltip={link.label}
+                  onClick={handleMenuItemClick} // Add onClick here
                 >
                   <a>
                     <link.icon />
@@ -93,6 +110,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === link.href}
                   tooltip={link.label}
+                  onClick={handleMenuItemClick} // Add onClick here
                 >
                   <a>
                     <link.icon />
@@ -116,3 +134,4 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+
