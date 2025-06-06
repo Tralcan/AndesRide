@@ -26,7 +26,7 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      allowedOrigins: ["localhost:9002"], // Adjust if your dev port is different
+      // allowedOrigins: ["localhost:9002"], // Removed for troubleshooting
     }
   }
 };
