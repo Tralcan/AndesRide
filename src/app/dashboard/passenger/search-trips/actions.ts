@@ -16,12 +16,12 @@ export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
 
 export interface TripSearchResult {
   id: string;
-  driverName: string; // Cambiado de driverFullName
+  driverName: string;
   driverAvatar: string | null;
   origin: string;
   destination: string;
   departure_datetime: string; // ISO string
-  availableSeats: number; // Cambiado de seats_available
+  availableSeats: number;
 }
 
 // Estos valores deben coincidir con los usados en el componente de la página
@@ -34,7 +34,7 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
   const params = {
     p_origin: (filters.origin && filters.origin !== ANY_ORIGIN_VALUE) ? filters.origin : null,
     p_destination: (filters.destination && filters.destination !== ANY_DESTINATION_VALUE) ? filters.destination : null,
-    p_search_date_str: filters.date || null, // La función SQL espera YYYY-MM-DD o null
+    p_search_date_str: (filters.date && filters.date !== "") ? filters.date : null,
   };
 
   console.log('[searchSupabaseTrips] Parameters for RPC call search_trips_with_driver_info:', params);
@@ -53,6 +53,10 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
     console.log('[searchSupabaseTrips] Raw data from RPC:', data ? `${data.length} rows` : 'No data');
     if (data && data.length > 0) {
         console.log('[searchSupabaseTrips] First raw row from RPC:', JSON.stringify(data[0], null, 2));
+        if (data[0].driver_name === null && data[0].driver_avatar === null) {
+            console.warn("[searchSupabaseTrips] Warning: First trip's driver_name and driver_avatar are both null. Check JOIN condition or data in profiles table for driver_id:", data[0].driver_id);
+        }
+        // El log de keys de profiles se eliminó porque ahora los campos vienen directamente.
     }
 
     if (!data) {
@@ -63,22 +67,19 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
       let driverAvatar = trip_from_rpc.driver_avatar;
       const driverName = trip_from_rpc.driver_name || 'Conductor Desconocido';
 
-      if (driverAvatar === undefined || driverAvatar === '') {
-        driverAvatar = null;
-      }
-      
-      if (!driverAvatar && driverName !== 'Conductor Desconocido') {
+      // Ensure driverAvatar is not undefined or an empty string before using it.
+      // If it's null, undefined, or empty, generate a placeholder.
+      if (!driverAvatar || (typeof driverAvatar === 'string' && driverAvatar.trim() === '')) {
         const initials = (driverName.substring(0, 2) || 'CD').toUpperCase();
-        driverAvatar = `https://placehold.co/100x100.png?text=${initials}`;
-      } else if (!driverAvatar) {
-        driverAvatar = `https://placehold.co/100x100.png?text=??`;
+        driverAvatar = `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`;
       }
+      // If driverAvatar was a valid non-empty string, it remains unchanged.
 
       return {
         id: trip_from_rpc.id,
         origin: trip_from_rpc.origin,
         destination: trip_from_rpc.destination,
-        departure_datetime: trip_from_rpc.departure_datetime, // La función SQL devuelve TIMESTAMPTZ, que es una cadena ISO
+        departure_datetime: trip_from_rpc.departure_datetime,
         availableSeats: trip_from_rpc.seats_available,
         driverName: driverName,
         driverAvatar: driverAvatar,

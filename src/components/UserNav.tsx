@@ -1,3 +1,4 @@
+
 // src/components/UserNav.tsx
 "use client";
 
@@ -25,30 +26,40 @@ export function UserNav() {
   }
 
   const displayName = user.profile?.fullName || user.user_metadata?.full_name || user.user_metadata?.name || user.email || "Usuario";
-  const displayAvatar = user.profile?.avatarUrl || user.user_metadata?.avatar_url || "";
   const displayEmail = user.email || "No disponible";
 
   const getInitials = (name: string) => {
-    if (!name || name.includes('@')) { // If name is an email, try to make initials from the part before @
+    if (!name || name.trim() === '' || name.includes('@')) { 
         const emailPart = name.split('@')[0];
-        if (emailPart.length > 0) {
+        if (emailPart && emailPart.trim() !== '') {
             return emailPart.substring(0, Math.min(2, emailPart.length)).toUpperCase();
         }
-        return "?";
+        return "??";
     }
-    const names = name.split(" ");
+    const names = name.split(" ").filter(n => n.trim() !== '');
+    if (names.length === 0) return "??";
     let initials = names[0].substring(0, 1).toUpperCase();
     if (names.length > 1) {
       initials += names[names.length - 1].substring(0, 1).toUpperCase();
+    } else if (names[0].length > 1) { // Handle single name case for second initial
+      initials += names[0].substring(1, 2).toUpperCase();
     }
-    return initials || "?";
+    return initials || "??";
   };
+  
+  const rawAvatar = user.profile?.avatarUrl || user.user_metadata?.avatar_url;
+  // Asegurarse de que displayAvatar sea siempre una URL válida.
+  // Si rawAvatar es una cadena pero está vacía o solo espacios, usar placeholder.
+  const displayAvatar = rawAvatar && rawAvatar.trim() !== "" 
+    ? rawAvatar 
+    : `https://placehold.co/100x100.png?text=${encodeURIComponent(getInitials(displayName))}`;
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
         <Button variant="ghost" className="relative h-10 w-10 rounded-full">
           <Avatar className="h-10 w-10 border-2 border-primary">
+            {/* Aseguramos que AvatarImage no reciba una cadena vacía como src */}
             <AvatarImage src={displayAvatar} alt={displayName} data-ai-hint="user avatar" />
             <AvatarFallback>{getInitials(displayName)}</AvatarFallback>
           </Avatar>
