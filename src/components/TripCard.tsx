@@ -1,32 +1,33 @@
 // src/components/TripCard.tsx
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { CalendarDays, MapPin, Users, ArrowRight } from "lucide-react";
+import { CalendarDays, MapPin, Users, ArrowRight, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 import Image from "next/image";
 
-// This interface should match the structure provided by the search results,
-// particularly after transformation in page.tsx or actions.ts
 export interface Trip {
   id: string;
-  driverName: string;
-  driverAvatar: string | null; // Avatar URL can be null
+  driverName: string | null;
+  driverAvatar: string | null; 
   origin: string;
   destination: string;
-  date: Date; // Expecting a Date object here
+  date: Date; 
   availableSeats: number;
-  price?: number; // Price is optional
+  price?: number; 
 }
 
 interface TripCardProps {
   trip: Trip;
   onRequestRide: (tripId: string) => void;
+  isRequesting?: boolean; // New prop to indicate if a request is in progress for this trip
 }
 
-export function TripCard({ trip, onRequestRide }: TripCardProps) {
+export function TripCard({ trip, onRequestRide, isRequesting = false }: TripCardProps) {
   const driverInitial = trip.driverName?.substring(0, 2).toUpperCase() || '??';
   const avatarSrc = trip.driverAvatar || `https://placehold.co/100x100.png?text=${encodeURIComponent(driverInitial)}`;
+
+  const noSeatsAvailable = trip.availableSeats <= 0;
 
   return (
     <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
@@ -44,18 +45,18 @@ export function TripCard({ trip, onRequestRide }: TripCardProps) {
         <div className="flex items-center gap-3 mb-2">
           <Image
             src={avatarSrc}
-            alt={trip.driverName}
+            alt={trip.driverName || 'Conductor'}
             width={40}
             height={40}
-            className="rounded-full border-2 border-primary bg-muted" // Added bg-muted for placeholder
+            className="rounded-full border-2 border-primary bg-muted"
             data-ai-hint="profile person"
           />
           <div>
-            <CardTitle className="text-xl">{trip.driverName}</CardTitle>
+            <CardTitle className="text-xl">{trip.driverName || 'Conductor Anónimo'}</CardTitle>
             <CardDescription>Conductor(a)</CardDescription>
           </div>
         </div>
-        <div className="flex items-center justify-between text-base font-semibold text-foreground"> {/* Changed text-lg to text-base */}
+        <div className="flex items-center justify-between text-base font-semibold text-foreground">
           <span className="flex items-center gap-1"><MapPin className="h-5 w-5 text-primary"/>{trip.origin}</span>
           <ArrowRight className="h-5 w-5 text-muted-foreground"/>
           <span className="flex items-center gap-1"><MapPin className="h-5 w-5 text-primary"/>{trip.destination}</span>
@@ -64,22 +65,35 @@ export function TripCard({ trip, onRequestRide }: TripCardProps) {
       <CardContent className="space-y-3 flex-grow">
         <div className="flex items-center text-muted-foreground">
           <CalendarDays className="mr-2 h-5 w-5" />
-          {/* Ensure trip.date is a valid Date object before formatting */}
-          <span>{trip.date instanceof Date && !isNaN(trip.date.getTime()) ? format(trip.date, "PPP", { locale: es }) : "Fecha inválida"}</span>
+          <span>{trip.date instanceof Date && !isNaN(trip.date.getTime()) ? format(trip.date, "PPP 'a las' HH:mm", { locale: es }) : "Fecha inválida"}</span>
         </div>
         <div className="flex items-center text-muted-foreground">
           <Users className="mr-2 h-5 w-5" />
           <span>{trip.availableSeats} {trip.availableSeats === 1 ? 'asiento disponible' : 'asientos disponibles'}</span>
         </div>
-        {typeof trip.price === 'number' && ( // Check if price is a number before displaying
+        {typeof trip.price === 'number' && ( 
           <p className="text-lg font-semibold text-accent">
             ${trip.price.toFixed(2)} por asiento
           </p>
         )}
       </CardContent>
       <CardFooter>
-        <Button className="w-full" size="lg" onClick={() => onRequestRide(trip.id)}>
-          Solicitar Viaje
+        <Button 
+          className="w-full" 
+          size="lg" 
+          onClick={() => onRequestRide(trip.id)}
+          disabled={isRequesting || noSeatsAvailable}
+        >
+          {isRequesting ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Procesando...
+            </>
+          ) : noSeatsAvailable ? (
+            "Sin Cupos"
+          ) : (
+            "Solicitar Viaje"
+          )}
         </Button>
       </CardFooter>
     </Card>

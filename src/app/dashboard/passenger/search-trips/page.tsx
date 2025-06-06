@@ -7,24 +7,24 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { TripCard } from "@/components/TripCard"; // Note: Trip type for TripCard will be TripSearchResult now
-import type { TripSearchResult } from "./actions"; // Import the search result type
-import { searchSupabaseTrips } from "./actions"; // Import the server action
+import { TripCard } from "@/components/TripCard"; 
+import type { TripSearchResult } from "./actions"; 
+import { searchSupabaseTrips, requestTripSeatAction } from "./actions"; 
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { format as formatDateFns } from "date-fns"; // aliased to avoid conflict
+import { format as formatDateFns } from "date-fns"; 
 import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, SearchIcon, Loader2 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { supabase } from "@/lib/supabaseClient"; // For fetching locations
+import { supabase } from "@/lib/supabaseClient"; 
 
 const SearchFiltersSchemaClient = z.object({
   origin: z.string().optional(),
   destination: z.string().optional(),
-  date: z.date().optional(), // Client-side form uses Date object
+  date: z.date().optional(), 
 });
 
 type SearchFiltersClient = z.infer<typeof SearchFiltersSchemaClient>;
@@ -41,6 +41,7 @@ export default function SearchTripsPage() {
   const [filteredTrips, setFilteredTrips] = useState<TripSearchResult[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
+  const [isSubmittingRequestId, setIsSubmittingRequestId] = useState<string | null>(null);
   const [origins, setOrigins] = useState<LocationOption[]>([]);
   const [destinations, setDestinations] = useState<LocationOption[]>([]);
   const [isLoadingLocations, setIsLoadingLocations] = useState(true);
@@ -48,33 +49,63 @@ export default function SearchTripsPage() {
   const form = useForm<SearchFiltersClient>({
     resolver: zodResolver(SearchFiltersSchemaClient),
     defaultValues: {
-      origin: undefined,
-      destination: undefined,
+      origin: ANY_ORIGIN_VALUE,
+      destination: ANY_DESTINATION_VALUE,
       date: undefined,
     }
   });
 
-  const fetchInitialTrips = useCallback(async () => {
-    setIsLoading(true);
+  const performSearch = useCallback(async (searchData?: SearchFiltersClient) => {
+    setIsSearching(true);
+    const currentFilters = searchData || form.getValues();
+    const serverFilters = {
+      origin: currentFilters.origin,
+      destination: currentFilters.destination,
+      date: currentFilters.date ? formatDateFns(currentFilters.date, "yyyy-MM-dd") : undefined,
+    };
+
     try {
-      const trips = await searchSupabaseTrips({}); // Empty filters for initial load
+      const trips = await searchSupabaseTrips(serverFilters);
       setFilteredTrips(trips);
-      if (trips.length === 0) {
+      if (!searchData) { // Only show "Búsqueda Actualizada" if it's a manual search
+        // Initial load message handled by fetchInitialTrips
+      } else {
         toast({
-            title: "No hay viajes disponibles",
-            description: "Actualmente no hay viajes futuros publicados. ¡Vuelve más tarde!",
+          title: "Búsqueda Actualizada",
+          description: `Se encontraron ${trips.length} viaje(s) que coinciden con tus criterios.`,
+        });
+      }
+       if (trips.length === 0 && searchData) { // if manual search yields no results
+         toast({
+            title: "No se encontraron viajes",
+            description: "Intenta con otros filtros o no hay viajes para tu selección.",
         });
       }
     } catch (error: any) {
-      toast({
-        title: "Error al Cargar Viajes",
-        description: error.message || "No se pudieron cargar los viajes iniciales.",
+       toast({
+        title: "Error en la Búsqueda",
+        description: error.message || "Ocurrió un error al buscar viajes.",
         variant: "destructive",
       });
     } finally {
-      setIsLoading(false);
+      setIsSearching(false);
+      if (isLoading) setIsLoading(false); // Ensure isLoading is false after any search, including initial
     }
-  }, [toast]);
+  }, [toast, form, isLoading]); // Added isLoading to dependencies
+
+  const fetchInitialTrips = useCallback(async () => {
+    setIsLoading(true); // Explicitly set loading true for initial fetch
+    await performSearch(); // Use performSearch for initial load with default/empty filters
+    // No toast for initial load unless performSearch handles it for no results
+    if (filteredTrips.length === 0 && !isSearching) { // Check after performSearch
+       toast({
+            title: "No hay viajes disponibles",
+            description: "Actualmente no hay viajes futuros publicados. ¡Vuelve más tarde!",
+        });
+    }
+    // setIsLoading(false) is handled in performSearch's finally block
+  }, [performSearch, filteredTrips.length, isSearching, toast]); // Added dependencies
+
 
   useEffect(() => {
     async function fetchLocations() {
@@ -106,50 +137,48 @@ export default function SearchTripsPage() {
     }
     fetchLocations();
     fetchInitialTrips();
-  }, [toast, fetchInitialTrips]);
+  }, [toast, fetchInitialTrips]); // fetchInitialTrips is now stable due to useCallback
 
   const onSubmit = async (data: SearchFiltersClient) => {
-    setIsSearching(true);
-    const serverFilters = {
-      origin: data.origin,
-      destination: data.destination,
-      date: data.date ? formatDateFns(data.date, "yyyy-MM-dd") : undefined,
-    };
-
-    try {
-      const trips = await searchSupabaseTrips(serverFilters);
-      setFilteredTrips(trips);
-      toast({
-        title: "Búsqueda Actualizada",
-        description: `Se encontraron ${trips.length} viaje(s) que coinciden con tus criterios.`,
-      });
-    } catch (error: any) {
-       toast({
-        title: "Error en la Búsqueda",
-        description: error.message || "Ocurrió un error al buscar viajes.",
-        variant: "destructive",
-      });
-    } finally {
-      setIsSearching(false);
-    }
+    await performSearch(data);
   };
   
-  const handleRequestRide = (tripId: string) => {
+  const handleRequestRide = async (tripId: string) => {
+    setIsSubmittingRequestId(tripId);
     const trip = filteredTrips.find(t => t.id === tripId);
-    toast({
-      title: "¡Viaje Solicitado!",
-      description: `Tu solicitud para el viaje de ${trip?.origin} a ${trip?.destination} ha sido enviada a ${trip?.driverName}.`,
-      variant: "default"
-    });
-    // Future: Implement actual ride request logic (e.g., save to Supabase `trip_requests` table)
+    try {
+      const result = await requestTripSeatAction(tripId);
+      toast({
+        title: result.success ? (result.alreadyRequested ? "Información" : "¡Viaje Solicitado!") : "Error en Solicitud",
+        description: result.message,
+        variant: result.success ? "default" : "destructive"
+      });
+
+      if (result.success && !result.alreadyRequested) {
+        // Re-fetch trips to update available seats and potentially remove full trips
+        await performSearch(form.getValues());
+      }
+    } catch (error: any) {
+      toast({
+        title: "Error Inesperado",
+        description: "Ocurrió un error al procesar tu solicitud: " + error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setIsSubmittingRequestId(null);
+    }
   };
 
   const clearFiltersAndFetchAll = () => {
-    form.reset({ origin: undefined, destination: undefined, date: undefined });
-    fetchInitialTrips(); // Refetch all or default trips
+    form.reset({ 
+      origin: ANY_ORIGIN_VALUE, 
+      destination: ANY_DESTINATION_VALUE, 
+      date: undefined 
+    });
+    // Use performSearch with undefined to signal it's a 'clear filters' action
+    performSearch(undefined); 
     toast({ title: "Filtros Limpiados", description: "Mostrando todos los viajes disponibles."});
   };
-
 
   return (
     <div className="space-y-8">
@@ -175,7 +204,7 @@ export default function SearchTripsPage() {
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origen</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        value={field.value}
+                        value={field.value || ANY_ORIGIN_VALUE} // Ensure a default value for Select
                         disabled={isLoadingLocations || isSearching}
                       >
                         <FormControl>
@@ -210,7 +239,7 @@ export default function SearchTripsPage() {
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destino</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        value={field.value}
+                        value={field.value || ANY_DESTINATION_VALUE} // Ensure a default value for Select
                         disabled={isLoadingLocations || isSearching}
                       >
                         <FormControl>
@@ -281,8 +310,8 @@ export default function SearchTripsPage() {
                   Limpiar Filtros
                 </Button>
                 <Button type="submit" disabled={isSearching || isLoadingLocations || isLoading}>
-                  {isSearching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  {isSearching ? "Buscando..." : "Buscar Viajes"}
+                  {isSearching && !isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} 
+                  {isSearching && !isLoading ? "Buscando..." : "Buscar Viajes"}
                 </Button>
               </div>
             </form>
@@ -298,7 +327,6 @@ export default function SearchTripsPage() {
       ) : filteredTrips.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
           {filteredTrips.map((trip) => (
-            // Adapt TripCard to expect TripSearchResult and handle date formatting
             <TripCard 
                 key={trip.id} 
                 trip={{
@@ -307,11 +335,11 @@ export default function SearchTripsPage() {
                     driverAvatar: trip.driverAvatar,
                     origin: trip.origin,
                     destination: trip.destination,
-                    date: new Date(trip.departure_datetime), // Convert ISO string to Date for TripCard
+                    date: new Date(trip.departure_datetime), 
                     availableSeats: trip.availableSeats,
-                    // price is not included
                 }} 
-                onRequestRide={handleRequestRide} 
+                onRequestRide={handleRequestRide}
+                isRequesting={isSubmittingRequestId === trip.id}
             />
           ))}
         </div>
@@ -321,7 +349,7 @@ export default function SearchTripsPage() {
             <SearchIcon className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-xl font-semibold mb-2">No se Encontraron Viajes</h3>
             <p className="text-muted-foreground">
-              Intenta ajustar tus filtros de búsqueda o no hay viajes disponibles actualmente.
+              Intenta ajustar tus filtros de búsqueda o no hay viajes disponibles actualmente con esos criterios.
             </p>
           </CardContent>
         </Card>
