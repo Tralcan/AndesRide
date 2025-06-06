@@ -1,3 +1,4 @@
+
 import type {NextConfig} from 'next';
 
 const nextConfig: NextConfig = {
@@ -14,6 +15,12 @@ const nextConfig: NextConfig = {
         hostname: 'placehold.co',
         port: '',
         pathname: '/**',
+      },
+      {
+        protocol: 'https',
+        hostname: '*.googleusercontent.com', // Cubre lh3, lh4, etc.
+        port: '',
+        pathname: '/**', // Permite cualquier ruta dentro de estos dominios
       },
     ],
   },
