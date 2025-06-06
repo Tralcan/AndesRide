@@ -40,7 +40,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRoleState] = useState<Role | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // Initialize to true, only set to false once by onAuthStateChange
+  const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
 
@@ -83,7 +83,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
     console.log("[AuthContext][useEffect] Mounting. Setting up onAuthStateChange listener.");
-    // setIsLoading(true); // REMOVED: Rely on initial useState(true) and single flip by onAuthStateChange
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
@@ -91,37 +90,52 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[AuthContext][onAuthStateChange] Component unmounted, ignoring auth event:", event);
           return;
         }
-        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}.`);
+        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}. Current isLoading (before processing): ${isLoading}`);
         
-        // setIsLoading(true); // REMOVED: isLoading should only transition from true to false on initial load.
-
         setSession(currentSession);
 
         if (currentSession?.user) {
-          console.log('[AuthContext][onAuthStateChange] User in session. Fetching profile for:', currentSession.user.id);
+          // User session exists. Set base user object first.
+          // Profile and role will be updated asynchronously.
+          setUser(prevUser => ({ ...currentSession.user, profile: prevUser?.profile || null }));
+          
+          // Set isLoading to false now, as primary auth state is known.
+          // Profile fetching is secondary.
+          if (isLoading && isMounted) {
+            console.log('[AuthContext][onAuthStateChange] User session confirmed. Setting isLoading to false BEFORE profile fetch.');
+            setIsLoading(false);
+          }
+
+          console.log('[AuthContext][onAuthStateChange] Fetching profile for user:', currentSession.user.id);
           const profile = await fetchUserProfile(currentSession.user);
           
           if (!isMounted) {
-            console.log("[AuthContext][onAuthStateChange] Unmounted during profile fetch for event:", event);
+            console.log("[AuthContext][onAuthStateChange] Unmounted during/after profile fetch for event:", event);
             return; 
           }
           
-          setUser({ ...currentSession.user, profile });
-          setRoleState(profile?.role || null);
-          console.log('[AuthContext][onAuthStateChange] User and role updated.');
+          if (profile) {
+            setUser(prevUser => prevUser ? ({ ...prevUser, profile }) : ({...currentSession.user, profile }));
+            setRoleState(profile.role || null);
+            console.log('[AuthContext][onAuthStateChange] User profile and role updated after fetch.');
+          } else {
+            // No profile found, user object remains (with profile: null), role is null.
+            // Ensure role is explicitly set to null if profile fetch fails or returns no role.
+            setRoleState(null);
+            console.log('[AuthContext][onAuthStateChange] No profile found for user. Role explicitly set to null.');
+          }
+
         } else {
+          // No user session.
           console.log('[AuthContext][onAuthStateChange] No user in session. Clearing user and role.');
           setUser(null);
           setRoleState(null);
-        }
-        
-        if (isMounted) {
-            // This is the primary place isLoading transitions from true to false.
-            // It ensures that after the first auth state is processed (user or no user), loading is done.
-            if (isLoading) { // Only set to false if it's currently true
-                 console.log('[AuthContext][onAuthStateChange] Processed event. Setting isLoading to false.');
-                 setIsLoading(false); 
-            }
+
+          // Set isLoading to false here as well, as auth state is now known (no user).
+          if (isLoading && isMounted) {
+            console.log('[AuthContext][onAuthStateChange] No user session. Setting isLoading to false.');
+            setIsLoading(false);
+          }
         }
       }
     );
@@ -131,7 +145,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("[AuthContext][useEffect] Unmounting. Unsubscribing from auth changes.");
       authListener?.subscription.unsubscribe();
     };
-  }, [fetchUserProfile, supabase, isLoading]); // Added isLoading to dep array for the conditional setIsLoading(false)
+  }, [fetchUserProfile, supabase, isLoading]);
 
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
@@ -149,7 +163,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
         variant: "destructive",
       });
-      // If signInWithOAuth itself fails early, ensure loading state is handled if it was still true
       if (isLoading) setIsLoading(false); 
     }
     return { error };
@@ -157,7 +170,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const logout = async () => {
     console.log("[AuthContext] Attempting logout.");
-    // Let onAuthStateChange handle isLoading for SIGNED_OUT event
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("[AuthContext] Error during signOut:", error);
@@ -166,11 +178,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message || "No se pudo cerrar la sesión. Inténtalo de nuevo.",
         variant: "destructive",
       });
-      // Fallback if onAuthStateChange doesn't fire to set isLoading to false
       if (isLoading) setIsLoading(false);
     } else {
-      // AuthRedirector will handle navigation after onAuthStateChange updates state
-      console.log("[AuthContext] signOut successful. AuthRedirector will handle navigation.");
+      console.log("[AuthContext] signOut successful. onAuthStateChange will handle state updates and AuthRedirector navigation.");
     }
     return { error };
   };
@@ -182,8 +192,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     console.log(`[AuthContext][setRole] Setting role to ${newRole} for user ${user.id}.`);
-    // This function typically runs after initial load, so global isLoading shouldn't be set to true.
-    // UI feedback for this action should be local to the component calling it (e.g., button spinner).
     try {
       const dataToUpsert: {
         id: string; role: Role; updated_at: string; full_name?: string | null; avatar_url?: string | null;
@@ -197,7 +205,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .from("profiles")
         .upsert([dataToUpsert], { onConflict: 'id' })
         .select("id, full_name, avatar_url, role")
-        .eq('id', user.id) // Added .eq filter
+        .eq('id', user.id)
         .single();
 
       if (profileError) throw profileError;
@@ -218,7 +226,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error("[AuthContext][setRole] Error setting role:", error);
       toast({ title: "Error al Establecer Rol", description: error.message || "No se pudo actualizar tu rol.", variant: "destructive" });
     }
-    // No global setIsLoading toggle here.
   };
   
   console.log('[AuthContext] AuthProvider render end. Context value:', { isAuthenticated: !!user && !!session, isLoading, role: role });
@@ -242,4 +249,3 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
-
