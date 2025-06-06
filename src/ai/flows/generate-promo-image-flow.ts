@@ -44,27 +44,32 @@ const generatePromotionalImageFlow = ai.defineFlow(
 
     try {
       const {media} = await ai.generate({
-        model: 'googleai/gemini-2.0-flash-exp', // Crucial: Model con capacidad de generación de imágenes
+        model: 'googleai/gemini-2.0-flash-exp', 
         prompt: promptText,
         config: {
-          responseModalities: ['TEXT', 'IMAGE'], // Debe incluir IMAGE
-          // Puedes añadir safetySettings si es necesario, copiando de otros flows.
+          responseModalities: ['TEXT', 'IMAGE'], 
         },
       });
 
+      console.log('[generatePromotionalImageFlow] Full media object from Genkit:', JSON.stringify(media, null, 2));
+
       if (!media?.url) {
-        console.error('[generatePromotionalImageFlow] Image generation did not return a valid media URL. Media object:', media);
-        throw new Error('Image generation did not return a valid media URL.');
+        console.error('[generatePromotionalImageFlow] Image generation did not return a valid media URL. Media object (stringified for detail):', JSON.stringify(media, null, 2));
+        if (media && !media.url) {
+            console.error('[generatePromotionalImageFlow] Media object exists, but media.url is missing or empty.');
+        }
+        throw new Error('La generación de imagen no devolvió una URL válida o el objeto multimedia estaba malformado.');
       }
-      console.log(`[generatePromotionalImageFlow] Image URI received: ${media.url.substring(0,100)}...`);
+      console.log(`[generatePromotionalImageFlow] Image URI received (first 100 chars): ${media.url.substring(0,100)}...`);
       return { imageDataUri: media.url };
 
     } catch (error: any) {
-      console.error('[generatePromotionalImageFlow] Error generando imagen promocional con Genkit:', error);
-      // Fallback a una imagen placeholder en caso de error
-      const fallbackImageDataUri = 'https://placehold.co/1200x400.png?text=Error+Generando+Imagen';
-      return { imageDataUri: fallbackImageDataUri };
+      console.error('[generatePromotionalImageFlow] Error message from Genkit call:', error.message);
+      // Log all properties of the error object for better debugging
+      console.error('[generatePromotionalImageFlow] Full error object from Genkit:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+      
+      // Re-throw the error so the calling Server Action can handle the fallback
+      throw new Error(`Error en el flujo Genkit al generar imagen para "${input.brandName}": ${error.message}`);
     }
   }
 );
-
