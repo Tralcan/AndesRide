@@ -75,7 +75,7 @@ export async function getDriverTripsWithRequests(): Promise<TripWithPassengerReq
     const mappedRequests = (trip.trip_requests as any[] || []).map(req => ({
       id: req.id,
       status: req.status,
-      requestedAt: req.requested_at, // Changed from req.created_at
+      requestedAt: req.requested_at,
       passenger: req.profiles ? {
         id: req.profiles.id,
         fullName: req.profiles.full_name,
@@ -145,9 +145,10 @@ export async function updateTripRequestStatus(
     }
   }
 
+  // Remove updated_at from the update payload
   const { error: updateError } = await supabase
     .from('trip_requests')
-    .update({ status: newStatus, updated_at: new Date().toISOString() }) // Assuming updated_at column exists for requests
+    .update({ status: newStatus }) 
     .eq('id', requestId);
 
   if (updateError) {
@@ -158,3 +159,4 @@ export async function updateTripRequestStatus(
   revalidatePath('/dashboard/driver/passenger-requests');
   return { success: true, message: `Solicitud ${newStatus === 'confirmed' ? 'confirmada' : 'rechazada'} con éxito.` };
 }
+
