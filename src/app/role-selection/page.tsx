@@ -18,23 +18,13 @@ export default function RoleSelectionPage() {
   useEffect(() => {
     if (!isLoading) {
       if (!isAuthenticated) {
-        // AuthRedirector ahora maneja esta redirección si el usuario no está autenticado
-        // y llega a /role-selection. Sin embargo, mantenerlo aquí es una buena salvaguarda.
         console.log("[RoleSelectionPage] User not authenticated, redirecting to /");
         router.replace("/");
       }
-      // Si está autenticado, AuthRedirector ya ha decidido si debe estar aquí
-      // o en el dashboard/login. Si está aquí (en /role-selection) y autenticado,
-      // se le debe permitir elegir un rol, incluso si ya tiene uno (para cambiarlo).
     }
   }, [isLoading, isAuthenticated, router]);
 
-
-  // El esqueleto de carga principal es manejado por AuthRedirector.
-  // Aquí podríamos mostrar un esqueleto específico para el contenido de RoleSelectionPage si isLoading es true
-  // Y AuthRedirector ya ha determinado que el usuario DEBE estar en esta página.
-  // Por ahora, el AuthRedirector es suficiente.
-  if (isLoading && !user) { // Un chequeo adicional si isLoading pero user todavía no está cargado.
+  if (isLoading && !user) { 
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
         <Skeleton className="h-12 w-12 rounded-full mb-4" />
@@ -46,13 +36,18 @@ export default function RoleSelectionPage() {
   }
   
   const handleSetRole = async (selectedRole: RoleType) => {
+    console.log(`[RoleSelectionPage] User ${user?.id} attempting to set role: ${selectedRole}`);
     if (selectedRole) {
       await setRole(selectedRole);
-      // La redirección es manejada dentro de setRole en AuthContext
+      // La redirección es manejada dentro de setRole en AuthContext (o debería serlo)
+      // Si no, se podría añadir un router.push("/dashboard") aquí, pero es mejor centralizarlo.
+    } else {
+      console.warn("[RoleSelectionPage] No role selected or invalid role.");
     }
   };
 
-  const displayName = user?.profile?.fullName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email;
+  // Prioritize existing profile name, then metadata, then email
+  const displayName = user?.profile?.fullName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || "Usuario";
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-secondary p-6">

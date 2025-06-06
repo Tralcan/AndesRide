@@ -95,12 +95,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(currentSession);
 
         if (currentSession?.user) {
-          // User session exists. Set base user object first.
-          // Profile and role will be updated asynchronously.
           setUser(prevUser => ({ ...currentSession.user, profile: prevUser?.profile || null }));
           
-          // Set isLoading to false now, as primary auth state is known.
-          // Profile fetching is secondary.
           if (isLoading && isMounted) {
             console.log('[AuthContext][onAuthStateChange] User session confirmed. Setting isLoading to false BEFORE profile fetch.');
             setIsLoading(false);
@@ -119,19 +115,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRoleState(profile.role || null);
             console.log('[AuthContext][onAuthStateChange] User profile and role updated after fetch.');
           } else {
-            // No profile found, user object remains (with profile: null), role is null.
-            // Ensure role is explicitly set to null if profile fetch fails or returns no role.
             setRoleState(null);
             console.log('[AuthContext][onAuthStateChange] No profile found for user. Role explicitly set to null.');
           }
 
         } else {
-          // No user session.
           console.log('[AuthContext][onAuthStateChange] No user in session. Clearing user and role.');
           setUser(null);
           setRoleState(null);
 
-          // Set isLoading to false here as well, as auth state is now known (no user).
           if (isLoading && isMounted) {
             console.log('[AuthContext][onAuthStateChange] No user session. Setting isLoading to false.');
             setIsLoading(false);
@@ -191,40 +183,79 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       toast({ title: "Error", description: "Usuario no autenticado o rol no válido.", variant: "destructive" });
       return;
     }
-    console.log(`[AuthContext][setRole] Setting role to ${newRole} for user ${user.id}.`);
-    try {
-      const dataToUpsert: {
-        id: string; role: Role; updated_at: string; full_name?: string | null; avatar_url?: string | null;
-      } = {
-        id: user.id, role: newRole, updated_at: new Date().toISOString(),
-        full_name: user.profile?.fullName || user.user_metadata?.full_name || user.user_metadata?.name || user.email,
-        avatar_url: user.profile?.avatarUrl || user.user_metadata?.avatar_url || null,
-      };
+    console.log(`[AuthContext][setRole] Attempting to set role to ${newRole} for user ${user.id}.`);
 
+    // Prioritize user_metadata from OAuth, then existing profile, then email for full_name
+    const fullNameFromMetadata = user.user_metadata?.full_name || user.user_metadata?.name;
+    const avatarUrlFromMetadata = user.user_metadata?.avatar_url;
+
+    const currentProfileName = user.profile?.fullName;
+    const currentProfileAvatar = user.profile?.avatarUrl;
+
+    const dataToUpsert = {
+      id: user.id,
+      role: newRole,
+      updated_at: new Date().toISOString(),
+      full_name: fullNameFromMetadata || currentProfileName || user.email || "Usuario Anónimo",
+      avatar_url: avatarUrlFromMetadata || currentProfileAvatar || null,
+    };
+
+    console.log("[AuthContext][setRole] Data to upsert:", dataToUpsert);
+
+    try {
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
-        .upsert([dataToUpsert], { onConflict: 'id' })
+        .upsert(dataToUpsert, { onConflict: 'id' })
         .select("id, full_name, avatar_url, role")
         .eq('id', user.id)
         .single();
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        console.error("[AuthContext][setRole] Error upserting/selecting profile:", profileError);
+        toast({
+          title: "Error al Guardar Rol",
+          description: `No se pudo guardar tu rol: ${profileError.message}`,
+          variant: "destructive",
+        });
+        throw profileError;
+      }
 
       if (profileData) {
-        console.log("[AuthContext][setRole] Profile upserted successfully:", profileData);
-        setRoleState(newRole);
-        const updatedProfile = {
-            id: profileData.id, fullName: profileData.full_name, avatarUrl: profileData.avatar_url, role: profileData.role as Role,
+        console.log("[AuthContext][setRole] Profile upserted/selected successfully:", profileData);
+        setRoleState(newRole); // Set the role in context
+        const updatedProfile: UserProfile = {
+            id: profileData.id,
+            fullName: profileData.full_name,
+            avatarUrl: profileData.avatar_url,
+            role: profileData.role as Role,
         };
         setUser(currentUser => currentUser ? ({ ...currentUser, profile: updatedProfile }) : null);
+        toast({
+          title: "Rol Establecido",
+          description: `Tu rol ha sido establecido como ${newRole}. Redirigiendo...`,
+          variant: "default",
+        });
         router.push("/dashboard");
       } else {
-        console.error("[AuthContext][setRole] Profile data null after upsert.");
-        toast({ title: "Error al Establecer Rol", description: "No se recibió información del perfil actualizada.", variant: "destructive" });
+        console.error("[AuthContext][setRole] No profile data returned after upsert/select, though no explicit error.");
+        toast({
+          title: "Error al Establecer Rol",
+          description: "No se recibió información del perfil actualizada después de guardar.",
+          variant: "destructive",
+        });
       }
     } catch (error: any) {
-      console.error("[AuthContext][setRole] Error setting role:", error);
-      toast({ title: "Error al Establecer Rol", description: error.message || "No se pudo actualizar tu rol.", variant: "destructive" });
+      // This catch block might be redundant if profileError is thrown and caught,
+      // but good for other unexpected errors.
+      console.error("[AuthContext][setRole] Catch-all error during role setting:", error);
+      if (!toast.isActive(`error-setting-role-${user.id}`)) { // Avoid duplicate toasts for same error
+         toast({
+          id: `error-setting-role-${user.id}`,
+          title: "Error Inesperado al Establecer Rol",
+          description: error.message || "Ocurrió un error desconocido al actualizar tu rol.",
+          variant: "destructive",
+        });
+      }
     }
   };
   
