@@ -1,3 +1,4 @@
+
 // src/app/dashboard/driver/passenger-requests/page.tsx
 "use client";
 
@@ -66,7 +67,13 @@ export default function PassengerRequestsPage() {
     setError(null);
     try {
       const data = await getDriverTripsWithRequests();
-      setTripsWithRequests(data);
+      // Apply client-side filtering for now, until diagnostic from actions.ts is clear
+      const filteredData = data.map(trip => ({
+        ...trip,
+        requests: trip.requests.filter(r => r.status === 'pending' || r.status === 'confirmed')
+      })).filter(trip => trip.requests.length > 0); // Only show trips that have pending/confirmed requests after filtering
+
+      setTripsWithRequests(filteredData);
     } catch (e: any) {
       console.error("Error fetching passenger requests:", e);
       setError(e.message || "No se pudieron cargar las solicitudes.");
@@ -138,7 +145,8 @@ export default function PassengerRequestsPage() {
     );
   }
 
-  const tripsWithActiveRequests = tripsWithRequests.filter(trip => trip.requests.length > 0);
+  // No need for tripsWithActiveRequests variable if filtering happens in fetchRequests
+  // const tripsWithActiveRequests = tripsWithRequests.filter(trip => trip.requests.length > 0);
 
   return (
     <div className="space-y-8">
@@ -149,22 +157,22 @@ export default function PassengerRequestsPage() {
         </div>
       </div>
       <CardDescription>
-        Gestiona las solicitudes de los pasajeros para tus viajes publicados.
+        Gestiona las solicitudes de los pasajeros para tus viajes publicados. Aquí solo verás viajes con solicitudes pendientes o confirmadas.
       </CardDescription>
 
-      {tripsWithActiveRequests.length === 0 ? (
+      {tripsWithRequests.length === 0 ? (
         <Card className="text-center py-12 shadow-md">
           <CardContent>
             <Inbox className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
             <h3 className="text-xl font-semibold mb-2">No Hay Solicitudes Pendientes o Confirmadas</h3>
             <p className="text-muted-foreground">
-              Cuando los pasajeros soliciten unirse a tus viajes, aparecerán aquí.
+              Cuando los pasajeros soliciten unirse a tus viajes y estas solicitudes estén pendientes o confirmadas, aparecerán aquí.
             </p>
           </CardContent>
         </Card>
       ) : (
         <div className="space-y-6">
-          {tripsWithActiveRequests.map((trip) => {
+          {tripsWithRequests.map((trip) => {
             const originalUtcDate = new Date(trip.departureDateTime);
             const year = originalUtcDate.getUTCFullYear();
             const month = originalUtcDate.getUTCMonth();
@@ -192,8 +200,8 @@ export default function PassengerRequestsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4 space-y-4">
-                  {trip.requests.length === 0 ? (
-                     <p className="text-muted-foreground text-sm">No hay solicitudes para este viaje.</p>
+                  {trip.requests.length === 0 ? ( // Should not happen if tripsWithRequests is filtered
+                     <p className="text-muted-foreground text-sm">No hay solicitudes activas para este viaje.</p>
                   ) : (
                     trip.requests.map((request) => {
                       const passengerName = request.passenger?.fullName || "Pasajero Anónimo";
@@ -242,7 +250,7 @@ export default function PassengerRequestsPage() {
                                 <CheckCircle className="mr-1 h-4 w-4" /> Confirmada
                               </Badge>
                             )}
-                            {request.status === 'rejected' && (
+                            {request.status === 'rejected' && ( // Should not be shown due to client-side filter, but kept for completeness
                               <Badge variant="destructive" className="py-1 px-3">
                                 <XCircle className="mr-1 h-4 w-4" /> Rechazada
                               </Badge>
@@ -269,3 +277,4 @@ export default function PassengerRequestsPage() {
     </div>
   );
 }
+

@@ -1,3 +1,4 @@
+
 // src/app/dashboard/driver/passenger-requests/actions.ts
 'use server';
 
@@ -68,25 +69,32 @@ export async function getDriverTripsWithRequests(): Promise<TripWithPassengerReq
     return [];
   }
 
-  return driverTrips.map(trip => ({
-    tripId: trip.id,
-    origin: trip.origin,
-    destination: trip.destination,
-    departureDateTime: trip.departure_datetime,
-    seatsAvailable: trip.seats_available,
-    requests: (trip.trip_requests as any[] || []).map(req => ({
+  return driverTrips.map(trip => {
+    console.log(`[PassengerRequestsActions] Raw trip_requests for trip ${trip.id}:`, JSON.stringify(trip.trip_requests, null, 2));
+    
+    const mappedRequests = (trip.trip_requests as any[] || []).map(req => ({
       id: req.id,
       status: req.status,
       requestedAt: req.created_at,
-      // Supabase nests the related record inside a key with the table name ('profiles')
-      // or the explicit relation name if defined.
       passenger: req.profiles ? {
         id: req.profiles.id,
         fullName: req.profiles.full_name,
         avatarUrl: req.profiles.avatar_url,
       } : null,
-    })).filter(r => r.status === 'pending' || r.status === 'confirmed'), // Show pending and confirmed
-  }));
+    }));
+    // .filter(r => r.status === 'pending' || r.status === 'confirmed'); // Temporalmente comentado para diagnóstico
+
+    console.log(`[PassengerRequestsActions] Mapped requests for trip ${trip.id} (before client-side filtering):`, JSON.stringify(mappedRequests, null, 2));
+
+    return {
+      tripId: trip.id,
+      origin: trip.origin,
+      destination: trip.destination,
+      departureDateTime: trip.departure_datetime,
+      seatsAvailable: trip.seats_available,
+      requests: mappedRequests,
+    };
+  });
 }
 
 export async function updateTripRequestStatus(
@@ -159,3 +167,4 @@ export async function updateTripRequestStatus(
   revalidatePath('/dashboard/driver/passenger-requests');
   return { success: true, message: `Solicitud ${newStatus === 'confirmed' ? 'confirmada' : 'rechazada'} con éxito.` };
 }
+

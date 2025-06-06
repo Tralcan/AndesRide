@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { APP_NAME, ROLES } from "@/lib/constants";
-import { Car, User, PlusCircle, Search, ListChecks, Image as ImageIcon, AlertTriangle } from "lucide-react";
+import { Car, User, PlusCircle, Search, ListChecks, Image as ImageIcon, AlertTriangle, UserCheck } from "lucide-react";
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
@@ -179,12 +179,12 @@ export default function DashboardPage() {
         <Card className="hover:shadow-xl transition-shadow">
           <CardHeader>
             <CardTitle className="flex items-center gap-2 text-xl">
-               {role === ROLES.DRIVER ? <ListChecks className="h-6 w-6 text-accent" /> : <ImageIcon className="h-6 w-6 text-accent" /> }
-              {role === ROLES.DRIVER ? "Gestionar Tus Viajes" : "Tus Reservas"}
+               <ListChecks className="h-6 w-6 text-accent" />
+              {role === ROLES.DRIVER ? "Gestionar Mis Viajes" : "Mis Viajes Reservados"}
             </CardTitle>
             <CardDescription>
               {role === ROLES.DRIVER
-                ? "Visualiza y gestiona tus viajes publicados y las solicitudes de los pasajeros."
+                ? "Visualiza y gestiona tus viajes publicados."
                 : "Lleva un registro de tus viajes solicitados y confirmados."}
             </CardDescription>
           </CardHeader>
@@ -194,12 +194,51 @@ export default function DashboardPage() {
                 <Link href="/dashboard/driver/manage-trips">Ver Mis Viajes</Link>
               </Button>
             ) : (
-              <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
-                <Link href="/dashboard/passenger/saved-routes">Ver Rutas Guardadas</Link>
+              // TODO: Implementar página de "Mis Viajes Reservados" para pasajeros
+              <Button asChild variant="outline" size="lg" className="w-full sm:w-auto" disabled> 
+                <Link href="#">Ver Mis Reservas (Próximamente)</Link>
               </Button>
             )}
           </CardContent>
         </Card>
+
+        {role === ROLES.DRIVER && (
+          <Card className="hover:shadow-xl transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <UserCheck className="h-6 w-6 text-accent" />
+                Solicitudes de Pasajeros
+              </CardTitle>
+              <CardDescription>
+                Revisa y gestiona las solicitudes de los pasajeros para tus viajes.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
+                <Link href="/dashboard/driver/passenger-requests">Ver Solicitudes</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
+
+        {role === ROLES.PASSENGER && (
+           <Card className="hover:shadow-xl transition-shadow">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-xl">
+                <ImageIcon className="h-6 w-6 text-accent" /> 
+                Rutas Guardadas
+              </CardTitle>
+              <CardDescription>
+                Guarda tus rutas frecuentes y recibe notificaciones.
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <Button asChild variant="outline" size="lg" className="w-full sm:w-auto">
+                <Link href="/dashboard/passenger/saved-routes">Ver Rutas Guardadas</Link>
+              </Button>
+            </CardContent>
+          </Card>
+        )}
       </div>
     </div>
   );
