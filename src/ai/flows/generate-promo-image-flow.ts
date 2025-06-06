@@ -14,7 +14,7 @@ import {z} from 'genkit';
 const GeneratePromotionalImageInputSchema = z.object({
   brandName: z.string().describe('The name of the brand for which to generate the image.'),
   customPrompt: z.string().optional().describe('An optional custom prompt to guide image generation. If not provided, a generic prompt will be used.'),
-  promoText: z.string().optional().describe('Optional promotional text to overlay or integrate into the image as a sticker or highlight.'),
+  promoText: z.string().optional().describe('Optional promotional text to overlay or integrate into the image.'),
 });
 export type GeneratePromotionalImageInput = z.infer<typeof GeneratePromotionalImageInputSchema>;
 
@@ -34,10 +34,12 @@ const generatePromotionalImageFlow = ai.defineFlow(
     outputSchema: GeneratePromotionalImageOutputSchema,
   },
   async (input) => {
-    let promptText = input.customPrompt || `Una imagen de banner promocional vibrante y atractiva para la marca "${input.brandName}", con temática de viajes y aventura en la región andina. Dimensiones ideales 1200x400. Estilo moderno, limpio y que invite a la acción.`;
+    // Simplified default prompt
+    let promptText = input.customPrompt || `Un banner promocional vibrante y atractivo para la marca "${input.brandName}", con temática de viajes y aventura en la región andina. Estilo moderno y limpio.`;
 
     if (input.promoText) {
-      promptText += ` Incorpora el siguiente texto promocional de forma destacada en la imagen, como un sticker, banner o superposición de texto elegante y legible: "${input.promoText}". Asegúrate de que el texto sea claramente visible y se integre bien con el diseño general de la imagen promocional.`;
+      // Simplified instruction for incorporating promo text
+      promptText += ` Incorpora el siguiente texto promocional de forma destacada en la imagen: "${input.promoText}".`;
     }
     
     console.log(`[generatePromotionalImageFlow] Prompt para Genkit: ${promptText}`);
@@ -58,6 +60,7 @@ const generatePromotionalImageFlow = ai.defineFlow(
         if (media && !media.url) {
             console.error('[generatePromotionalImageFlow] Media object exists, but media.url is missing or empty.');
         }
+        // Throw an error to be caught by the calling Server Action
         throw new Error('La generación de imagen no devolvió una URL válida o el objeto multimedia estaba malformado.');
       }
       console.log(`[generatePromotionalImageFlow] Image URI received (first 100 chars): ${media.url.substring(0,100)}...`);
@@ -73,3 +76,4 @@ const generatePromotionalImageFlow = ai.defineFlow(
     }
   }
 );
+
