@@ -61,7 +61,7 @@ export default function EditTripPage() {
       seats: 1,
       origin: "",
       destination: "",
-      time: "10:00", // Formato 24h (10 AM)
+      time: "13:00", // Changed from "10:00" - This is the initial default before data loads
     },
   });
 
@@ -95,7 +95,7 @@ export default function EditTripPage() {
         origin: data.origin,
         destination: data.destination,
         date: dateObject,
-        time: timeString,
+        time: timeString, // This will be "HH:MM" from existing data
         seats: data.seats_available,
       });
 
@@ -147,7 +147,7 @@ export default function EditTripPage() {
 
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
-    console.log("[EditTripPage] Submitted data.time:", data.time); // Log para inspeccionar
+    console.log("[EditTripPage] Submitted data.time:", data.time); 
     if (!user?.id || !tripId) {
       toast({ title: "Error", description: "Falta información para actualizar.", variant: "destructive" });
       return;
