@@ -1,3 +1,4 @@
+
 // src/app/dashboard/driver/edit-trip/[tripId]/page.tsx
 "use client";
 
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createClientComponentClient } from '@/lib/supabase/client'; // Updated import
+import { createClientComponentClient } from '@/lib/supabase/client'; 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
@@ -60,7 +61,7 @@ export default function EditTripPage() {
       seats: 1,
       origin: "",
       destination: "",
-      time: "10:00",
+      time: "10:00", // Formato 24h (10 AM)
     },
   });
 
@@ -88,7 +89,7 @@ export default function EditTripPage() {
       }
 
       const dateObject = new Date(data.departure_datetime);
-      const timeString = format(dateObject, "HH:mm");
+      const timeString = format(dateObject, "HH:mm"); // Formato 24h (ej: "08:30" o "22:15")
 
       form.reset({
         origin: data.origin,
@@ -146,6 +147,7 @@ export default function EditTripPage() {
 
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
+    console.log("[EditTripPage] Submitted data.time:", data.time); // Log para inspeccionar
     if (!user?.id || !tripId) {
       toast({ title: "Error", description: "Falta información para actualizar.", variant: "destructive" });
       return;

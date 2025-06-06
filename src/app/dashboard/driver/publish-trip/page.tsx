@@ -1,3 +1,4 @@
+
 // src/app/dashboard/driver/publish-trip/page.tsx
 "use client";
 
@@ -11,7 +12,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/useAuth"; 
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { createClientComponentClient } from '@/lib/supabase/client'; // Updated import
+import { createClientComponentClient } from '@/lib/supabase/client'; 
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
@@ -54,7 +55,7 @@ export default function PublishTripPage() {
       seats: 1,
       origin: "",
       destination: "",
-      time: "10:00",
+      time: "10:00", // Formato 24h (10 AM)
     },
   });
 
@@ -93,6 +94,7 @@ export default function PublishTripPage() {
   }, [toast, supabase]);
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
+    console.log("[PublishTripPage] Submitted data.time:", data.time); // Log para inspeccionar
     if (!user?.id) {
       toast({
         title: "Error de Autenticación",
