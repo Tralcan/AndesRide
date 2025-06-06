@@ -32,21 +32,18 @@ const TripFormSchema = z.object({
   time: z.string()
     .transform((val) => {
       console.log("[Zod Transform EditTrip] Original time value:", val);
-      // Regex mejorada para capturar AM/PM con o sin puntos, insensible a mayúsculas/minúsculas
       const meridiemMatch = val.match(/(\d{1,2}:\d{2})\s?(A\.?M\.?|P\.?M\.?)/i);
       if (meridiemMatch) {
-        const timePart = meridiemMatch[1]; // ej: "10:00"
-        const meridiem = meridiemMatch[2].toUpperCase().replace(/\./g, ""); // ej: "AM" o "PM" (sin puntos)
+        const timePart = meridiemMatch[1]; 
+        const meridiem = meridiemMatch[2].toUpperCase().replace(/\./g, ""); 
         let [hours, minutes] = timePart.split(':').map(Number);
 
         if (meridiem === 'PM' && hours < 12) {
           hours += 12;
-        } else if (meridiem === 'AM' && hours === 12) { // 12 AM (medianoche) es 00 horas
+        } else if (meridiem === 'AM' && hours === 12) { 
           hours = 0;
         }
-        // No se necesita ajuste para 12 PM (mediodía), ya es 12 en formato 24h
-        // No se necesita ajuste para AM (1-11 AM), ya son correctos en formato 24h
-
+        
         const formattedHours = hours.toString().padStart(2, '0');
         const formattedMinutes = minutes.toString().padStart(2, '0');
         const transformed = `${formattedHours}:${formattedMinutes}`;
@@ -116,14 +113,22 @@ export default function EditTripPage() {
          return;
       }
 
-      const dateObject = new Date(data.departure_datetime);
-      const timeString = format(dateObject, "HH:mm"); 
+      const isoString = data.departure_datetime; // e.g., "2025-06-27T10:00:00+00"
+      const dateObjectForCalendar = new Date(isoString); // For the calendar picker
+
+      // Get UTC hours and minutes to display the time as it was stored (e.g. 10:00 if T10:00:00Z)
+      const dateForUtcParts = new Date(isoString);
+      const hoursUtc = dateForUtcParts.getUTCHours().toString().padStart(2, '0');
+      const minutesUtc = dateForUtcParts.getUTCMinutes().toString().padStart(2, '0');
+      const timeString = `${hoursUtc}:${minutesUtc}`; 
+      console.log(`[EditTripPage] Fetched trip. Original departure_datetime: ${isoString}. Date for calendar: ${dateObjectForCalendar.toISOString()}. Time for form (from UTC parts): ${timeString}`);
+
 
       form.reset({
         origin: data.origin,
         destination: data.destination,
-        date: dateObject,
-        time: timeString, 
+        date: dateObjectForCalendar, // Use the date object that reflects local day for the calendar
+        time: timeString,    // Use the time string extracted from UTC parts
         seats: data.seats_available,
       });
 
@@ -183,13 +188,18 @@ export default function EditTripPage() {
     setIsSubmitting(true);
 
     try {
+      // data.date is a Date object from the calendar, representing local date
+      // data.time is "HH:MM" (24h) from the form, representing local time
       const year = data.date.getFullYear();
       const month = (data.date.getMonth() + 1).toString().padStart(2, '0');
       const day = data.date.getDate().toString().padStart(2, '0');
-      // data.time ya debería estar en formato HH:MM gracias a la transformación de Zod
       const [hours, minutes] = data.time.split(':');
       
+      // This departureDateTime string is in "local" time based on form inputs
+      // Supabase client will handle converting this to UTC if the column is TIMESTAMPTZ,
+      // usually based on the session's timezone (often defaults to UTC for server operations).
       const departureDateTime = `${year}-${month}-${day}T${hours}:${minutes}:00`;
+      console.log("[EditTripPage] Constructed departureDateTime for Supabase:", departureDateTime);
 
       const tripToUpdate = {
         origin: data.origin,
@@ -432,5 +442,3 @@ export default function EditTripPage() {
     </Card>
   );
 }
-
-    
