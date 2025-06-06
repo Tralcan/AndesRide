@@ -1,3 +1,4 @@
+
 // src/app/dashboard/passenger/search-trips/page.tsx
 "use client";
 
@@ -39,8 +40,8 @@ const ANY_DESTINATION_VALUE = "_ANY_DESTINATION_";
 export default function SearchTripsPage() {
   const { toast } = useToast();
   const [filteredTrips, setFilteredTrips] = useState<TripSearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSearching, setIsSearching] = useState(false);
+  const [isLoading, setIsLoading] = useState(true); // For initial page load state
+  const [isSearching, setIsSearching] = useState(false); // For active search operation
   const [isSubmittingRequestId, setIsSubmittingRequestId] = useState<string | null>(null);
   const [origins, setOrigins] = useState<LocationOption[]>([]);
   const [destinations, setDestinations] = useState<LocationOption[]>([]);
@@ -67,18 +68,12 @@ export default function SearchTripsPage() {
     try {
       const trips = await searchSupabaseTrips(serverFilters);
       setFilteredTrips(trips);
-      if (!searchData) { // Only show "Búsqueda Actualizada" if it's a manual search
-        // Initial load message handled by fetchInitialTrips
-      } else {
+      if (searchData) { // Only show toast for manual searches initiated by user
         toast({
-          title: "Búsqueda Actualizada",
-          description: `Se encontraron ${trips.length} viaje(s) que coinciden con tus criterios.`,
-        });
-      }
-       if (trips.length === 0 && searchData) { // if manual search yields no results
-         toast({
-            title: "No se encontraron viajes",
-            description: "Intenta con otros filtros o no hay viajes para tu selección.",
+          title: trips.length > 0 ? "Búsqueda Actualizada" : "No se encontraron viajes",
+          description: trips.length > 0 
+            ? `Se encontraron ${trips.length} viaje(s) que coinciden con tus criterios.`
+            : "Intenta con otros filtros o no hay viajes para tu selección.",
         });
       }
     } catch (error: any) {
@@ -89,55 +84,81 @@ export default function SearchTripsPage() {
       });
     } finally {
       setIsSearching(false);
-      if (isLoading) setIsLoading(false); // Ensure isLoading is false after any search, including initial
     }
-  }, [toast, form, isLoading]); // Added isLoading to dependencies
+  }, [toast, form]); // form is stable, toast is stable
 
-  const fetchInitialTrips = useCallback(async () => {
-    setIsLoading(true); // Explicitly set loading true for initial fetch
-    await performSearch(); // Use performSearch for initial load with default/empty filters
-    // No toast for initial load unless performSearch handles it for no results
-    if (filteredTrips.length === 0 && !isSearching) { // Check after performSearch
-       toast({
-            title: "No hay viajes disponibles",
-            description: "Actualmente no hay viajes futuros publicados. ¡Vuelve más tarde!",
-        });
-    }
-    // setIsLoading(false) is handled in performSearch's finally block
-  }, [performSearch, filteredTrips.length, isSearching, toast]); // Added dependencies
-
-
+  // Effect for initial data loading (locations and first set of trips)
   useEffect(() => {
-    async function fetchLocations() {
-      setIsLoadingLocations(true);
+    let isMounted = true;
+    setIsLoading(true);
+    setIsLoadingLocations(true);
+
+    async function fetchInitialData() {
       try {
+        // Fetch locations
         const { data: originsData, error: originsError } = await supabase
           .from('origen')
           .select('nombre')
           .eq('estado', true);
-        if (originsError) throw originsError;
-        setOrigins(originsData || []);
+        if (originsError && isMounted) throw originsError;
+        if (isMounted) setOrigins(originsData || []);
 
         const { data: destinationsData, error: destinationsError } = await supabase
           .from('destino')
           .select('nombre')
           .eq('estado', true);
-        if (destinationsError) throw destinationsError;
-        setDestinations(destinationsData || []);
+        if (destinationsError && isMounted) throw destinationsError;
+        if (isMounted) setDestinations(destinationsData || []);
+        
       } catch (error: any) {
-        console.error("Error fetching locations for Search Trips:", error);
-        toast({
-          title: "Error al Cargar Ubicaciones",
-          description: error.message || "No se pudieron obtener los orígenes/destinos.",
-          variant: "destructive",
-        });
+        if (isMounted) {
+          console.error("Error fetching locations for Search Trips:", error);
+          toast({
+            title: "Error al Cargar Ubicaciones",
+            description: error.message || "No se pudieron obtener los orígenes/destinos.",
+            variant: "destructive",
+          });
+        }
       } finally {
-        setIsLoadingLocations(false);
+        if (isMounted) setIsLoadingLocations(false);
+      }
+
+      // Fetch initial trips (all available by default)
+      // We pass undefined to performSearch to use default filters (all trips)
+      // and false for the second argument to suppress the toast for initial load.
+      const initialServerFilters = {
+        origin: ANY_ORIGIN_VALUE,
+        destination: ANY_DESTINATION_VALUE,
+        date: undefined,
+      };
+       try {
+        const trips = await searchSupabaseTrips(initialServerFilters);
+        if (isMounted) {
+          setFilteredTrips(trips);
+          if (trips.length === 0) {
+            toast({
+                title: "No hay viajes disponibles",
+                description: "Actualmente no hay viajes futuros publicados. ¡Vuelve más tarde!",
+            });
+          }
+        }
+      } catch (error: any) {
+        if (isMounted) {
+          toast({
+            title: "Error al Cargar Viajes Iniciales",
+            description: error.message || "Ocurrió un error al cargar los viajes.",
+            variant: "destructive",
+          });
+        }
+      } finally {
+        if (isMounted) setIsLoading(false); // This marks the end of the initial page load
       }
     }
-    fetchLocations();
-    fetchInitialTrips();
-  }, [toast, fetchInitialTrips]); // fetchInitialTrips is now stable due to useCallback
+
+    fetchInitialData();
+    
+    return () => { isMounted = false; };
+  }, [toast]); // Only runs once on mount
 
   const onSubmit = async (data: SearchFiltersClient) => {
     await performSearch(data);
@@ -145,7 +166,6 @@ export default function SearchTripsPage() {
   
   const handleRequestRide = async (tripId: string) => {
     setIsSubmittingRequestId(tripId);
-    const trip = filteredTrips.find(t => t.id === tripId);
     try {
       const result = await requestTripSeatAction(tripId);
       toast({
@@ -155,7 +175,7 @@ export default function SearchTripsPage() {
       });
 
       if (result.success && !result.alreadyRequested) {
-        // Re-fetch trips to update available seats and potentially remove full trips
+        // Re-fetch trips to update available seats using current filters
         await performSearch(form.getValues());
       }
     } catch (error: any) {
@@ -169,14 +189,15 @@ export default function SearchTripsPage() {
     }
   };
 
-  const clearFiltersAndFetchAll = () => {
+  const clearFiltersAndFetchAll = async () => {
     form.reset({ 
       origin: ANY_ORIGIN_VALUE, 
       destination: ANY_DESTINATION_VALUE, 
       date: undefined 
     });
-    // Use performSearch with undefined to signal it's a 'clear filters' action
-    performSearch(undefined); 
+    // Pass undefined to performSearch to signify it's a 'clear filters' action using default/all trips logic
+    // The true argument is to show a toast for this manual action.
+    await performSearch(form.getValues()); // Will use the reset values
     toast({ title: "Filtros Limpiados", description: "Mostrando todos los viajes disponibles."});
   };
 
@@ -204,8 +225,8 @@ export default function SearchTripsPage() {
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Origen</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        value={field.value || ANY_ORIGIN_VALUE} // Ensure a default value for Select
-                        disabled={isLoadingLocations || isSearching}
+                        value={field.value || ANY_ORIGIN_VALUE}
+                        disabled={isLoadingLocations || isSearching || isLoading}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -239,8 +260,8 @@ export default function SearchTripsPage() {
                       <FormLabel className="flex items-center gap-1"><MapPin className="h-4 w-4 text-muted-foreground" /> Destino</FormLabel>
                       <Select 
                         onValueChange={field.onChange} 
-                        value={field.value || ANY_DESTINATION_VALUE} // Ensure a default value for Select
-                        disabled={isLoadingLocations || isSearching}
+                        value={field.value || ANY_DESTINATION_VALUE}
+                        disabled={isLoadingLocations || isSearching || isLoading}
                       >
                         <FormControl>
                           <SelectTrigger>
@@ -281,7 +302,7 @@ export default function SearchTripsPage() {
                                 "w-full pl-3 text-left font-normal",
                                 !field.value && "text-muted-foreground"
                               )}
-                              disabled={isSearching}
+                              disabled={isSearching || isLoading}
                             >
                               {field.value ? formatDateFns(field.value, "PPP", { locale: es }) : <span>Cualquier Fecha</span>}
                               <CalendarIcon className="ml-auto h-4 w-4 opacity-50" />
@@ -295,7 +316,7 @@ export default function SearchTripsPage() {
                             onSelect={field.onChange} 
                             initialFocus 
                             locale={es}
-                            disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) || isSearching} 
+                            disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) || isSearching || isLoading} 
                           />
                         </PopoverContent>
                       </Popover>
@@ -310,8 +331,8 @@ export default function SearchTripsPage() {
                   Limpiar Filtros
                 </Button>
                 <Button type="submit" disabled={isSearching || isLoadingLocations || isLoading}>
-                  {isSearching && !isLoading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} 
-                  {isSearching && !isLoading ? "Buscando..." : "Buscar Viajes"}
+                  {isSearching ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null} 
+                  {isSearching ? "Buscando..." : "Buscar Viajes"}
                 </Button>
               </div>
             </form>
@@ -319,7 +340,7 @@ export default function SearchTripsPage() {
         </CardContent>
       </Card>
 
-      {isLoading ? (
+      {isLoading ? ( // Show loader if initial page load is in progress
          <div className="flex justify-center items-center h-64">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <p className="ml-4 text-lg text-muted-foreground">Cargando viajes disponibles...</p>
@@ -343,7 +364,7 @@ export default function SearchTripsPage() {
             />
           ))}
         </div>
-      ) : (
+      ) : ( // Shown if not loading and no trips were found (after initial load or a search)
         <Card className="text-center py-12 shadow-md">
           <CardContent>
             <SearchIcon className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
@@ -357,3 +378,4 @@ export default function SearchTripsPage() {
     </div>
   );
 }
+
