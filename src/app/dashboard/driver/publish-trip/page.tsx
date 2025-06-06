@@ -57,6 +57,7 @@ export default function PublishTripPage() {
       destination: "",
       time: "10:00", 
     },
+    mode: 'onSubmit', // Validate only on submit
   });
 
   useEffect(() => {

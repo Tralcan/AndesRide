@@ -63,6 +63,7 @@ export default function EditTripPage() {
       destination: "",
       time: "10:00", // Initial default before data loads
     },
+    mode: 'onSubmit', // Validate only on submit
   });
 
   const fetchTripData = useCallback(async () => {
