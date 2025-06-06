@@ -29,10 +29,11 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     console.error('[MyBookedTripsActions] User not authenticated:', authError?.message);
     return [];
   }
+  console.log('[MyBookedTripsActions] Querying trips for passenger_id:', user.id); // <-- CONSOLE.LOG AÑADIDO
 
   const { data: requests, error: requestsError } = await supabase
     .from('trip_requests')
-    .select(`
+    .select(\`
       id,
       status,
       requested_at,
@@ -49,7 +50,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
           avatar_url
         )
       )
-    `)
+    \`)
     .eq('passenger_id', user.id)
     .order('requested_at', { ascending: false });
 
@@ -70,7 +71,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     const driverName = driverProfile?.full_name || 'Conductor Anónimo';
     if (!driverAvatar || (typeof driverAvatar === 'string' && driverAvatar.trim() === '')) {
         const initials = (driverName.substring(0, 2).toUpperCase() || 'CA');
-        driverAvatar = `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`;
+        driverAvatar = \`https://placehold.co/100x100.png?text=\${encodeURIComponent(initials)}\`;
     }
 
 
