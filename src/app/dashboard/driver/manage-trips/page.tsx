@@ -1,10 +1,11 @@
+
 // src/app/dashboard/driver/manage-trips/page.tsx
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Locale } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
-import { createClientComponentClient } from '@/lib/supabase/client'; // Updated import
+import { createClientComponentClient } from '@/lib/supabase/client'; 
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -178,38 +179,54 @@ export default function ManageTripsPage() {
         </Card>
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-          {trips.map((trip) => (
-            <Card key={trip.id} className="shadow-lg flex flex-col">
-              <CardHeader className="pb-3">
-                <CardTitle className="text-xl flex items-center justify-between">
-                  <span>{trip.origin} <ArrowRight className="inline h-5 w-5 mx-1 text-muted-foreground" /> {trip.destination}</span>
-                </CardTitle>
-                <CardDescription className="flex items-center pt-1">
-                  <CalendarDays className="mr-2 h-4 w-4" />
-                  {safeFormatDate(trip.departure_datetime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es })}
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="flex-grow space-y-2">
-                <div className="flex items-center text-sm text-muted-foreground">
-                  <Users className="mr-2 h-4 w-4" />
-                  {trip.seats_available} {trip.seats_available === 1 ? 'asiento disponible' : 'asientos disponibles'}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                    Publicado: {safeFormatDate(trip.created_at, "dd/MM/yy HH:mm", { locale: es })}
-                </div>
-              </CardContent>
-              <CardFooter className="grid grid-cols-2 gap-2 pt-4">
-                <Button variant="outline" asChild>
-                  <Link href={`/dashboard/driver/edit-trip/${trip.id}`}>
-                    <Edit3 className="mr-2 h-4 w-4" /> Editar
-                  </Link>
-                </Button>
-                <Button variant="destructive" onClick={() => setTripToDelete(trip)}>
-                  <Trash2 className="mr-2 h-4 w-4" /> Eliminar
-                </Button>
-              </CardFooter>
-            </Card>
-          ))}
+          {trips.map((trip) => {
+            const originalUtcDate = new Date(trip.departure_datetime);
+            const year = originalUtcDate.getUTCFullYear();
+            const month = originalUtcDate.getUTCMonth(); // 0-indexed
+            const day = originalUtcDate.getUTCDate();
+            const hours = originalUtcDate.getUTCHours();
+            const minutes = originalUtcDate.getUTCMinutes();
+            
+            // Create a new Date object using the UTC components.
+            // This "tricks" date-fns format into displaying these values as if they were local.
+            const dateForDisplay = new Date(year, month, day, hours, minutes);
+            
+            const formattedDepartureDateTime = safeFormatDate(dateForDisplay, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+            const formattedCreatedAt = safeFormatDate(trip.created_at, "dd/MM/yy HH:mm", { locale: es });
+
+            return (
+              <Card key={trip.id} className="shadow-lg flex flex-col">
+                <CardHeader className="pb-3">
+                  <CardTitle className="text-xl flex items-center justify-between">
+                    <span>{trip.origin} <ArrowRight className="inline h-5 w-5 mx-1 text-muted-foreground" /> {trip.destination}</span>
+                  </CardTitle>
+                  <CardDescription className="flex items-center pt-1">
+                    <CalendarDays className="mr-2 h-4 w-4" />
+                    {formattedDepartureDateTime}
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="flex-grow space-y-2">
+                  <div className="flex items-center text-sm text-muted-foreground">
+                    <Users className="mr-2 h-4 w-4" />
+                    {trip.seats_available} {trip.seats_available === 1 ? 'asiento disponible' : 'asientos disponibles'}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                      Publicado: {formattedCreatedAt}
+                  </div>
+                </CardContent>
+                <CardFooter className="grid grid-cols-2 gap-2 pt-4">
+                  <Button variant="outline" asChild>
+                    <Link href={`/dashboard/driver/edit-trip/${trip.id}`}>
+                      <Edit3 className="mr-2 h-4 w-4" /> Editar
+                    </Link>
+                  </Button>
+                  <Button variant="destructive" onClick={() => setTripToDelete(trip)}>
+                    <Trash2 className="mr-2 h-4 w-4" /> Eliminar
+                  </Button>
+                </CardFooter>
+              </Card>
+            );
+          })}
         </div>
       )}
 
@@ -223,7 +240,20 @@ export default function ManageTripsPage() {
               a 
               <span className="font-semibold"> {tripToDelete?.destination} </span> 
               programado para 
-              <span className="font-semibold"> {tripToDelete ? safeFormatDate(tripToDelete.departure_datetime, "dd MMM, yyyy HH:mm", { locale: es }) : ''} </span>
+              <span className="font-semibold"> {
+                tripToDelete 
+                ? (() => {
+                    const originalUtcModalDate = new Date(tripToDelete.departure_datetime);
+                    const modalYear = originalUtcModalDate.getUTCFullYear();
+                    const modalMonth = originalUtcModalDate.getUTCMonth();
+                    const modalDay = originalUtcModalDate.getUTCDate();
+                    const modalHours = originalUtcModalDate.getUTCHours();
+                    const modalMinutes = originalUtcModalDate.getUTCMinutes();
+                    const modalDateForDisplay = new Date(modalYear, modalMonth, modalDay, modalHours, modalMinutes);
+                    return safeFormatDate(modalDateForDisplay, "dd MMM, yyyy HH:mm", { locale: es });
+                  })()
+                : ''
+              } </span>
               será eliminado permanentemente.
             </AlertDialogDescription>
           </AlertDialogHeader>
@@ -238,3 +268,4 @@ export default function ManageTripsPage() {
     </div>
   );
 }
+
