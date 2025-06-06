@@ -19,7 +19,7 @@ import { CalendarIcon, MapPin, SearchIcon, Loader2 } from "lucide-react";
 import { useEffect, useState, useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { createClientComponentClient } from "@/lib/supabaseClient";
+import { createClientComponentClient } from '@/lib/supabase/client'; // Updated import
 
 const SearchFiltersSchemaClient = z.object({
   origin: z.string().optional(),
@@ -85,7 +85,7 @@ export default function SearchTripsPage() {
     } finally {
       setIsSearching(false);
     }
-  }, [toast, form]); // Removed performSearch from its own dependencies
+  }, [toast, form]);
 
   useEffect(() => {
     let isMounted = true;
@@ -156,10 +156,10 @@ export default function SearchTripsPage() {
     fetchInitialData();
     
     return () => { isMounted = false; };
-  }, [toast, supabase]); // Dependencies for initial load
+  }, [toast, supabase]);
 
   const onSubmit = async (data: SearchFiltersClient) => {
-    await performSearch(data); // Call performSearch for manual form submissions
+    await performSearch(data);
   };
   
   const handleRequestRide = async (tripId: string) => {
@@ -173,7 +173,6 @@ export default function SearchTripsPage() {
       });
 
       if (result.success && !result.alreadyRequested) {
-        // Re-fetch trips to update seat counts
         await performSearch(form.getValues()); 
       }
     } catch (error: any) {
@@ -193,7 +192,7 @@ export default function SearchTripsPage() {
       destination: ANY_DESTINATION_VALUE, 
       date: undefined 
     });
-    await performSearch(form.getValues()); // Use the reset form values
+    await performSearch(form.getValues()); 
     toast({ title: "Filtros Limpiados", description: "Mostrando todos los viajes disponibles."});
   };
 

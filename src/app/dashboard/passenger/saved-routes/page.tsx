@@ -18,7 +18,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { watchRoute, type WatchRouteInput } from "@/ai/flows/route-watcher";
-import { createClientComponentClient } from "@/lib/supabaseClient";
+import { createClientComponentClient } from '@/lib/supabase/client'; // Updated import
 
 const SavedRouteSchema = z.object({
   origin: z.string().min(1, "Por favor selecciona un origen."),

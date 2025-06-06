@@ -1,7 +1,7 @@
 // src/app/dashboard/passenger/search-trips/actions.ts
 'use server';
 
-import { createServerActionClient } from '@/lib/supabaseClient';
+import { createServerActionClient } from '@/lib/supabase/server'; // Updated import
 import { z } from 'zod';
 import { cookies } from 'next/headers';
 

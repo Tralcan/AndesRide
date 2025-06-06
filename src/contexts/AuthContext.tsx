@@ -2,7 +2,7 @@
 "use client";
 
 import type { Role } from "@/lib/constants";
-import { createClientComponentClient } from "@/lib/supabaseClient";
+import { createClientComponentClient } from '@/lib/supabase/client'; // Updated import
 import type { AuthError, AuthSubscription, Session, User as SupabaseUser, SupabaseClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactNode, SetStateAction} from "react";
@@ -36,6 +36,7 @@ interface AuthContextType {
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  // Logs for env vars moved to createClientComponentClient directly
   const supabase = useMemo(() => createClientComponentClient(), []);
 
   const [user, setUser] = useState<User | null>(null);

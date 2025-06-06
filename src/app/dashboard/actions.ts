@@ -1,7 +1,7 @@
 // src/app/dashboard/actions.ts
 'use server';
 
-import { createServerActionClient } from '@/lib/supabaseClient';
+import { createServerActionClient } from '@/lib/supabase/server'; // Updated import
 import { generatePromotionalImageForBrand, type GeneratePromotionalImageInput } from '@/ai/flows/generate-promo-image-flow';
 
 interface BrandFromSupabase {

@@ -1,11 +1,11 @@
 // src/app/auth/callback/route.ts
 import { NextResponse, type NextRequest } from 'next/server';
-import { createRouteHandlerClient } from '@/lib/supabaseClient';
+import { createRouteHandlerClient } from '@/lib/supabase/server'; // Updated import
 import { cookies } from 'next/headers';
 
 export async function GET(request: NextRequest) {
   const cookieStore = cookies();
-  const supabase = createRouteHandlerClient(cookieStore);
+  const supabase = createRouteHandlerClient(cookieStore); // Pass cookieStore
   const fullRequestUrl = request.url;
   console.log('[AuthCallback] Received request to /auth/callback. Full URL:', fullRequestUrl);
 

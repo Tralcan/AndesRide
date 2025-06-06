@@ -4,7 +4,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Locale } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
-import { createClientComponentClient } from "@/lib/supabaseClient";
+import { createClientComponentClient } from '@/lib/supabase/client'; // Updated import
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
