@@ -31,17 +31,21 @@ const TripFormSchema = z.object({
   time: z.string()
     .transform((val) => {
       console.log("[Zod Transform PublishTrip] Original time value:", val);
-      const meridiemMatch = val.match(/(\d{1,2}:\d{2})\s?(AM|PM)/i);
+      // Regex mejorada para capturar AM/PM con o sin puntos, insensible a mayúsculas/minúsculas
+      const meridiemMatch = val.match(/(\d{1,2}:\d{2})\s?(A\.?M\.?|P\.?M\.?)/i);
       if (meridiemMatch) {
-        const timePart = meridiemMatch[1];
-        const meridiem = meridiemMatch[2].toUpperCase();
+        const timePart = meridiemMatch[1]; // ej: "10:00"
+        const meridiem = meridiemMatch[2].toUpperCase().replace(/\./g, ""); // ej: "AM" o "PM" (sin puntos)
         let [hours, minutes] = timePart.split(':').map(Number);
 
         if (meridiem === 'PM' && hours < 12) {
           hours += 12;
-        } else if (meridiem === 'AM' && hours === 12) { // 12 AM es 00 horas
+        } else if (meridiem === 'AM' && hours === 12) { // 12 AM (medianoche) es 00 horas
           hours = 0;
         }
+        // No se necesita ajuste para 12 PM (mediodía), ya es 12 en formato 24h
+        // No se necesita ajuste para AM (1-11 AM), ya son correctos en formato 24h
+
         const formattedHours = hours.toString().padStart(2, '0');
         const formattedMinutes = minutes.toString().padStart(2, '0');
         const transformed = `${formattedHours}:${formattedMinutes}`;
