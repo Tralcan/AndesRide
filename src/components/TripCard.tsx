@@ -12,8 +12,8 @@ export interface Trip {
   id: string;
   driverName: string;
   driverAvatar: string | null; // Avatar URL can be null
-  origin: string; 
-  destination: string; 
+  origin: string;
+  destination: string;
   date: Date; // Expecting a Date object here
   availableSeats: number;
   price?: number; // Price is optional
@@ -26,14 +26,14 @@ interface TripCardProps {
 
 export function TripCard({ trip, onRequestRide }: TripCardProps) {
   const driverInitial = trip.driverName?.substring(0, 2).toUpperCase() || '??';
-  const avatarSrc = trip.driverAvatar || `https://placehold.co/100x100.png?text=${driverInitial}`;
+  const avatarSrc = trip.driverAvatar || `https://placehold.co/100x100.png?text=${encodeURIComponent(driverInitial)}`;
 
   return (
     <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
       <div className="relative h-40 w-full">
-        <Image 
-          src={`https://placehold.co/600x240.png?text=${encodeURIComponent(trip.origin)}+a+${encodeURIComponent(trip.destination)}`} 
-          alt={`Mapa ilustrando el viaje de ${trip.origin} a ${trip.destination}`} 
+        <Image
+          src={`https://placehold.co/600x240.png?text=${encodeURIComponent(trip.origin)}+a+${encodeURIComponent(trip.destination)}`}
+          alt={`Mapa ilustrando el viaje de ${trip.origin} a ${trip.destination}`}
           fill
           className="object-cover"
           sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
@@ -42,11 +42,11 @@ export function TripCard({ trip, onRequestRide }: TripCardProps) {
       </div>
       <CardHeader className="pb-3">
         <div className="flex items-center gap-3 mb-2">
-          <Image 
-            src={avatarSrc} 
-            alt={trip.driverName} 
-            width={40} 
-            height={40} 
+          <Image
+            src={avatarSrc}
+            alt={trip.driverName}
+            width={40}
+            height={40}
             className="rounded-full border-2 border-primary bg-muted" // Added bg-muted for placeholder
             data-ai-hint="profile person"
           />
@@ -55,7 +55,7 @@ export function TripCard({ trip, onRequestRide }: TripCardProps) {
             <CardDescription>Conductor(a)</CardDescription>
           </div>
         </div>
-        <div className="flex items-center justify-between text-lg font-semibold text-foreground">
+        <div className="flex items-center justify-between text-base font-semibold text-foreground"> {/* Changed text-lg to text-base */}
           <span className="flex items-center gap-1"><MapPin className="h-5 w-5 text-primary"/>{trip.origin}</span>
           <ArrowRight className="h-5 w-5 text-muted-foreground"/>
           <span className="flex items-center gap-1"><MapPin className="h-5 w-5 text-primary"/>{trip.destination}</span>
