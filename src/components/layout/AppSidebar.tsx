@@ -1,3 +1,4 @@
+
 // src/components/layout/AppSidebar.tsx
 "use client";
 
@@ -14,7 +15,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES } from "@/lib/constants";
-import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings, ListChecks, UserCheck } from "lucide-react"; // Added UserCheck
+import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings, ListChecks, UserCheck, MapPin } from "lucide-react"; // Added UserCheck, MapPin
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -25,11 +26,12 @@ const commonLinks = [
 const driverLinks = [
   { href: "/dashboard/driver/publish-trip", label: "Publicar Viaje", icon: PlusCircle },
   { href: "/dashboard/driver/manage-trips", label: "Gestionar Viajes", icon: ListChecks },
-  { href: "/dashboard/driver/passenger-requests", label: "Solicitudes Pasajeros", icon: UserCheck }, // New Link
+  { href: "/dashboard/driver/passenger-requests", label: "Solicitudes Pasajeros", icon: UserCheck },
 ];
 
 const passengerLinks = [
   { href: "/dashboard/passenger/search-trips", label: "Buscar Viajes", icon: Search },
+  { href: "/dashboard/passenger/my-booked-trips", label: "Mis Viajes Reservados", icon: MapPin }, // Updated Link
   { href: "/dashboard/passenger/saved-routes", label: "Rutas Guardadas", icon: Bookmark },
 ];
 
@@ -46,9 +48,6 @@ export function AppSidebar() {
     if (isMobile) {
       setOpenMobile(false);
     } else {
-      // For desktop, if the sidebar is open, set 'open' to false.
-      // The Sidebar component's rendering logic based on its 'collapsible' prop
-      // and 'open' state will determine if it visually collapses/hides or does nothing.
       if (open) {
         setOpen(false);
       }
@@ -76,7 +75,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === link.href}
                   tooltip={link.label}
-                  onClick={handleMenuItemClick} // Add onClick here
+                  onClick={handleMenuItemClick} 
                 >
                   <a>
                     <link.icon />
@@ -93,7 +92,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === link.href || pathname.startsWith(link.href + '/')}
                   tooltip={link.label}
-                  onClick={handleMenuItemClick} // Add onClick here
+                  onClick={handleMenuItemClick} 
                 >
                   <a>
                     <link.icon />
@@ -110,7 +109,7 @@ export function AppSidebar() {
                   asChild
                   isActive={pathname === link.href}
                   tooltip={link.label}
-                  onClick={handleMenuItemClick} // Add onClick here
+                  onClick={handleMenuItemClick} 
                 >
                   <a>
                     <link.icon />
@@ -134,3 +133,4 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
+    
