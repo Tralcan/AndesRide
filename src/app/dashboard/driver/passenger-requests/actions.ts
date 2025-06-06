@@ -47,7 +47,7 @@ export async function getDriverTripsWithRequests(): Promise<TripWithPassengerReq
       trip_requests (
         id,
         status,
-        created_at,
+        requested_at, 
         passenger_id,
         profiles (
           id,
@@ -75,14 +75,13 @@ export async function getDriverTripsWithRequests(): Promise<TripWithPassengerReq
     const mappedRequests = (trip.trip_requests as any[] || []).map(req => ({
       id: req.id,
       status: req.status,
-      requestedAt: req.created_at,
+      requestedAt: req.requested_at, // Changed from req.created_at
       passenger: req.profiles ? {
         id: req.profiles.id,
         fullName: req.profiles.full_name,
         avatarUrl: req.profiles.avatar_url,
       } : null,
     }));
-    // .filter(r => r.status === 'pending' || r.status === 'confirmed'); // Temporalmente comentado para diagnóstico
 
     console.log(`[PassengerRequestsActions] Mapped requests for trip ${trip.id} (before client-side filtering):`, JSON.stringify(mappedRequests, null, 2));
 
@@ -108,7 +107,6 @@ export async function updateTripRequestStatus(
     return { success: false, message: 'Error de autenticación.' };
   }
 
-  // Verify the current user is the driver of the trip associated with this request
   const { data: requestDetails, error: requestDetailsError } = await supabase
     .from('trip_requests')
     .select(`
@@ -132,13 +130,10 @@ export async function updateTripRequestStatus(
     return { success: false, message: 'No autorizado para modificar esta solicitud.' };
   }
   
-  // If confirming, check seats. This is a simplified check.
-  // A robust solution would use an RPC for atomic decrement.
   if (newStatus === 'confirmed' && requestDetails.status === 'pending') {
     if (requestDetails.trips.seats_available <= 0) {
       return { success: false, message: 'No hay asientos disponibles en este viaje para confirmar la solicitud.' };
     }
-    // Decrement seats (non-atomically, for now)
     const { error: seatUpdateError } = await supabase
         .from('trips')
         .update({ seats_available: requestDetails.trips.seats_available - 1 })
@@ -150,21 +145,16 @@ export async function updateTripRequestStatus(
     }
   }
 
-
   const { error: updateError } = await supabase
     .from('trip_requests')
-    .update({ status: newStatus, updated_at: new Date().toISOString() })
+    .update({ status: newStatus, updated_at: new Date().toISOString() }) // Assuming updated_at column exists for requests
     .eq('id', requestId);
 
   if (updateError) {
     console.error('[PassengerRequestsActions] Error updating trip request status:', updateError);
-    // If seat decrement happened but status update failed, we have an inconsistency.
-    // This is why an RPC is preferred for atomicity.
-    // For now, we'll just report the status update error.
     return { success: false, message: `Error al actualizar el estado de la solicitud: ${updateError.message}` };
   }
 
   revalidatePath('/dashboard/driver/passenger-requests');
   return { success: true, message: `Solicitud ${newStatus === 'confirmed' ? 'confirmada' : 'rechazada'} con éxito.` };
 }
-

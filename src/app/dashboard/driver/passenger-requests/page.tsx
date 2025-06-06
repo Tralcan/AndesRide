@@ -67,11 +67,10 @@ export default function PassengerRequestsPage() {
     setError(null);
     try {
       const data = await getDriverTripsWithRequests();
-      // Apply client-side filtering for now, until diagnostic from actions.ts is clear
       const filteredData = data.map(trip => ({
         ...trip,
         requests: trip.requests.filter(r => r.status === 'pending' || r.status === 'confirmed')
-      })).filter(trip => trip.requests.length > 0); // Only show trips that have pending/confirmed requests after filtering
+      })).filter(trip => trip.requests.length > 0); 
 
       setTripsWithRequests(filteredData);
     } catch (e: any) {
@@ -101,7 +100,7 @@ export default function PassengerRequestsPage() {
           description: result.message,
           variant: "default",
         });
-        fetchRequests(); // Re-fetch data to reflect changes
+        fetchRequests(); 
       } else {
         toast({
           title: "Error al Actualizar",
@@ -144,9 +143,6 @@ export default function PassengerRequestsPage() {
       </Card>
     );
   }
-
-  // No need for tripsWithActiveRequests variable if filtering happens in fetchRequests
-  // const tripsWithActiveRequests = tripsWithRequests.filter(trip => trip.requests.length > 0);
 
   return (
     <div className="space-y-8">
@@ -200,13 +196,13 @@ export default function PassengerRequestsPage() {
                   </div>
                 </CardHeader>
                 <CardContent className="pt-4 space-y-4">
-                  {trip.requests.length === 0 ? ( // Should not happen if tripsWithRequests is filtered
+                  {trip.requests.length === 0 ? ( 
                      <p className="text-muted-foreground text-sm">No hay solicitudes activas para este viaje.</p>
                   ) : (
                     trip.requests.map((request) => {
                       const passengerName = request.passenger?.fullName || "Pasajero Anónimo";
                       const passengerAvatar = request.passenger?.avatarUrl || `https://placehold.co/40x40.png?text=${getPassengerInitials(passengerName)}`;
-                      const formattedRequestedAt = safeFormatDate(request.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
+                      const formattedRequestedAt = safeFormatDate(request.requestedAt, "dd MMM, yyyy HH:mm", { locale: es }); // Using request.requestedAt
 
                       return (
                         <div key={request.id} className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-3 border rounded-md hover:bg-muted/50 transition-colors">
@@ -250,7 +246,7 @@ export default function PassengerRequestsPage() {
                                 <CheckCircle className="mr-1 h-4 w-4" /> Confirmada
                               </Badge>
                             )}
-                            {request.status === 'rejected' && ( // Should not be shown due to client-side filter, but kept for completeness
+                            {request.status === 'rejected' && ( 
                               <Badge variant="destructive" className="py-1 px-3">
                                 <XCircle className="mr-1 h-4 w-4" /> Rechazada
                               </Badge>
@@ -277,4 +273,3 @@ export default function PassengerRequestsPage() {
     </div>
   );
 }
-
