@@ -29,6 +29,22 @@ export function TripCard({ trip, onRequestRide, isRequesting = false }: TripCard
 
   const noSeatsAvailable = trip.availableSeats <= 0;
 
+  let formattedDepartureDateTime = "Fecha inválida";
+  if (trip.date instanceof Date && !isNaN(trip.date.getTime())) {
+    const originalUtcDate = trip.date;
+    const year = originalUtcDate.getUTCFullYear();
+    const month = originalUtcDate.getUTCMonth(); // 0-indexed
+    const day = originalUtcDate.getUTCDate();
+    const hours = originalUtcDate.getUTCHours();
+    const minutes = originalUtcDate.getUTCMinutes();
+    
+    // Create a new Date object using the UTC components.
+    // This "tricks" date-fns format into displaying these values as if they were local.
+    const dateForDisplay = new Date(year, month, day, hours, minutes);
+    formattedDepartureDateTime = format(dateForDisplay, "PPP 'a las' HH:mm", { locale: es });
+  }
+
+
   return (
     <Card className="overflow-hidden shadow-lg hover:shadow-xl transition-shadow duration-300 flex flex-col">
       <div className="relative h-40 w-full">
@@ -65,7 +81,7 @@ export function TripCard({ trip, onRequestRide, isRequesting = false }: TripCard
       <CardContent className="space-y-3 flex-grow">
         <div className="flex items-center text-muted-foreground">
           <CalendarDays className="mr-2 h-5 w-5" />
-          <span>{trip.date instanceof Date && !isNaN(trip.date.getTime()) ? format(trip.date, "PPP 'a las' HH:mm", { locale: es }) : "Fecha inválida"}</span>
+          <span>{formattedDepartureDateTime}</span>
         </div>
         <div className="flex items-center text-muted-foreground">
           <Users className="mr-2 h-5 w-5" />
