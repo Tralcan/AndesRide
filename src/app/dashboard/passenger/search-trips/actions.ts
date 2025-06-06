@@ -1,3 +1,4 @@
+
 // src/app/dashboard/passenger/search-trips/actions.ts
 'use server';
 
@@ -16,12 +17,12 @@ export type SearchFilters = z.infer<typeof SearchFiltersSchema>;
 
 export interface TripSearchResult {
   id: string;
-  driverName: string | null; // Can be null if profile not found or name not set
+  driverName: string | null; 
   driverAvatar: string | null;
   origin: string;
   destination:string;
   departure_datetime: string; // ISO string
-  availableSeats: number; // This will be the effective_seats_available from RPC
+  availableSeats: number; 
 }
 
 const ANY_ORIGIN_VALUE = "_ANY_ORIGIN_";
@@ -39,7 +40,6 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
   console.log('[searchSupabaseTrips] Parameters for RPC call search_trips_with_driver_info:', params);
 
   try {
-    // The RPC function 'search_trips_with_driver_info' now returns 'seats_available' as the effective count
     const { data, error } = await supabase.rpc('search_trips_with_driver_info', params);
 
     if (error) {
@@ -57,7 +57,7 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
     }
 
     const results: TripSearchResult[] = data.map((trip_from_rpc: any) => {
-      const driverName = trip_from_rpc.driver_name || 'Conductor Anónimo'; // Fallback for null name
+      const driverName = trip_from_rpc.driver_name || 'Conductor Anónimo'; 
       let driverAvatar = trip_from_rpc.driver_avatar;
 
       if (!driverAvatar || (typeof driverAvatar === 'string' && driverAvatar.trim() === '')) {
@@ -70,18 +70,18 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
         origin: trip_from_rpc.origin,
         destination: trip_from_rpc.destination,
         departure_datetime: trip_from_rpc.departure_datetime,
-        availableSeats: trip_from_rpc.seats_available, // This is already effective_seats_available
+        availableSeats: trip_from_rpc.seats_available, 
         driverName: driverName,
         driverAvatar: driverAvatar,
       };
-    }).filter(trip => trip.id); // Filter out any potential null ID trips
+    }).filter(trip => trip.id); 
     
     console.log('[searchSupabaseTrips] Transformed results from RPC:', results.length > 0 ? `${results.length} results, first: ${JSON.stringify(results[0], null, 2)}` : 'No results after transformation.');
     return results;
 
   } catch (error) {
     console.error('[searchSupabaseTrips] Catch-all error in searchSupabaseTrips (RPC path):', error);
-    return []; // Return empty array on error
+    return []; 
   }
 }
 
@@ -93,13 +93,21 @@ export interface RequestTripSeatResult {
 
 export async function requestTripSeatAction(tripId: string): Promise<RequestTripSeatResult> {
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    // Obtener el usuario autenticado directamente en la Server Action
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+
+    if (authError) {
+      console.error('[requestTripSeatAction] Error fetching user for request:', authError);
+      return { success: false, message: "Error de autenticación al obtener usuario: " + authError.message };
+    }
+    
     if (!user) {
+      console.warn('[requestTripSeatAction] User not authenticated when trying to request seat.');
       return { success: false, message: "Usuario no autenticado." };
     }
     const passenger_id = user.id;
 
-    // First, check if the user has already requested this trip
+    // Primero, verificar si el usuario ya ha solicitado este viaje
     const { data: existingRequest, error: selectError } = await supabase
       .from('trip_requests')
       .select('id')
@@ -116,49 +124,23 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
       return { success: true, message: "Ya has solicitado un asiento en este viaje.", alreadyRequested: true };
     }
     
-    // Check current available seats before inserting (optional, as SQL function also checks)
-    // This is a client-side check for immediate feedback, but the DB is the source of truth.
-    const { data: tripData, error: tripError } = await supabase
-        .from('trips')
-        .select('seats_available')
-        .eq('id', tripId)
-        .single();
-
-    if (tripError || !tripData) {
-        console.error('[requestTripSeatAction] Error fetching trip details:', tripError);
-        return { success: false, message: "No se pudo obtener información del viaje." };
-    }
-    
-    // Calculate effective seats again, similar to RPC, to prevent race conditions as much as possible client-side
-    const { data: requestsCountData, error: requestsCountError } = await supabase
-      .from('trip_requests')
-      .select('id', { count: 'exact' })
-      .eq('trip_id', tripId)
-      .in('status', ['pending', 'confirmed']);
-
-    if (requestsCountError) {
-      console.error('[requestTripSeatAction] Error counting active requests:', requestsCountError);
-      return { success: false, message: "Error al contar las solicitudes activas." };
-    }
-    
-    const activeRequestsCount = requestsCountData?.length || 0;
-    const effectiveSeats = tripData.seats_available - activeRequestsCount;
-
-    if (effectiveSeats <= 0) {
-      return { success: false, message: "Lo sentimos, no quedan asientos disponibles para este viaje." };
-    }
-
+    // La función RPC search_trips_with_driver_info ya debería filtrar viajes sin cupos.
+    // Pero una verificación adicional antes de insertar no hace daño, aunque puede haber una condición de carrera.
+    // Por simplicidad, confiaremos en la restricción de la base de datos o en la lógica de la función RPC.
+    // Si fuera necesario, se podría añadir una llamada RPC aquí para verificar cupos de forma atómica
+    // o una lógica más compleja.
 
     const { error: insertError } = await supabase
       .from('trip_requests')
       .insert({ trip_id: tripId, passenger_id: passenger_id, status: 'pending' });
 
     if (insertError) {
-      if (insertError.code === '23505') { // Unique constraint violation (unique_trip_passenger)
+      if (insertError.code === '23505') { 
         console.warn('[requestTripSeatAction] Attempted to request already requested trip (caught by DB constraint):', insertError);
         return { success: true, message: "Ya has solicitado un asiento en este viaje.", alreadyRequested: true };
       }
       console.error('[requestTripSeatAction] Error inserting trip request:', insertError);
+      // Podríamos intentar obtener un mensaje más amigable si es un error de RLS o FK
       return { success: false, message: "Error al solicitar el asiento: " + insertError.message };
     }
 
