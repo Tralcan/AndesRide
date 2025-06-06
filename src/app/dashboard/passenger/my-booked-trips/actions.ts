@@ -29,7 +29,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     console.error('[MyBookedTripsActions] User not authenticated:', authError?.message);
     return [];
   }
-  console.log('[MyBookedTripsActions] Querying trips for passenger_id:', user.id); // <-- CONSOLE.LOG AÑADIDO
+  // CONSOLE.LOG ELIMINADO DE ESTA VERSIÓN PARA PRUEBA
 
   const { data: requests, error: requestsError } = await supabase
     .from('trip_requests')
