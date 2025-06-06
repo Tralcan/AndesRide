@@ -1,4 +1,3 @@
-
 // src/components/layout/AppSidebar.tsx
 "use client";
 
@@ -15,7 +14,7 @@ import {
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES } from "@/lib/constants";
-import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings, ListChecks } from "lucide-react";
+import { LayoutDashboard, PlusCircle, Search, Bookmark, UserCircle, Settings, ListChecks, UserCheck } from "lucide-react"; // Added UserCheck
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -26,6 +25,7 @@ const commonLinks = [
 const driverLinks = [
   { href: "/dashboard/driver/publish-trip", label: "Publicar Viaje", icon: PlusCircle },
   { href: "/dashboard/driver/manage-trips", label: "Gestionar Viajes", icon: ListChecks },
+  { href: "/dashboard/driver/passenger-requests", label: "Solicitudes Pasajeros", icon: UserCheck }, // New Link
 ];
 
 const passengerLinks = [
@@ -134,4 +134,3 @@ export function AppSidebar() {
     </Sidebar>
   );
 }
-
