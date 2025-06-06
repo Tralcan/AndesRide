@@ -42,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRoleState] = useState<Role>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Initialize to true
   const router = useRouter();
   const { toast } = useToast();
 
@@ -84,143 +84,63 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
-    console.log("[AuthContext][useEffect] Start. Initializing, checking session. isMounted:", isMounted);
-    console.log('[AuthContext][useEffect] Setting isLoading to true (initial)');
-    setIsLoading(true);
+    console.log("[AuthContext][useEffect] Mount. Initializing auth state listener. Setting isLoading to true.");
+    setIsLoading(true); // Ensure loading starts true
 
-    supabase.auth.getSession().then(async ({ data: { session: currentSession } }) => {
-      if (!isMounted) {
-        console.log("[AuthContext][getSession] Callback: Component unmounted, aborting state update.");
-        return;
-      }
-      console.log("[AuthContext][getSession] Initial session from getSession():", currentSession);
-      console.log('[AuthContext][getSession] Before setSession:', currentSession);
-      setSession(currentSession);
+    const { data: authListener } = supabase.auth.onAuthStateChange(
+      async (event, currentSession) => {
+        if (!isMounted) {
+          console.log("[AuthContext][onAuthStateChange] Component unmounted, ignoring auth event:", event);
+          return;
+        }
+        console.log('[AuthContext][onAuthStateChange] Event:', event, 'New Session:', currentSession);
+        
+        // Set loading true at the start of processing any auth change
+        // This helps if an event comes after the initial load was "done"
+        if (isMounted) setIsLoading(true);
 
-      if (currentSession?.user) {
-        console.log('[AuthContext][getSession] User found in session. Fetching profile...');
-        try {
+        setSession(currentSession); // Update session state
+
+        if (currentSession?.user) {
+          console.log('[AuthContext][onAuthStateChange] User found in session. Fetching profile for:', currentSession.user.id);
           const profile = await fetchUserProfile(currentSession.user);
+          
           if (!isMounted) {
-             console.log("[AuthContext][getSession] fetchUserProfile callback: Component unmounted, aborting state update.");
-            return;
+            console.log("[AuthContext][onAuthStateChange] Component unmounted during profile fetch for event:", event);
+            return; // Avoid state updates if unmounted
           }
-          console.log('[AuthContext][getSession] Profile fetched:', profile);
-          console.log('[AuthContext][getSession] Before setUser with profile:', { user: currentSession.user, profile });
+          
+          console.log('[AuthContext][onAuthStateChange] Profile fetched:', profile);
           setUser({ ...currentSession.user, profile });
-          if (profile?.role) {
-            console.log('[AuthContext][getSession] Profile has role. Before setRoleState:', profile.role);
-            setRoleState(profile.role);
-          } else {
-            console.log('[AuthContext][getSession] Profile has no role or profile is null. Before setRoleState(null)');
-            setRoleState(null);
-          }
-        } catch (profileError) {
-          console.error("[AuthContext][getSession] Error fetching profile during initial session load:", profileError);
+          setRoleState(profile?.role || null);
+        } else {
+          console.log('[AuthContext][onAuthStateChange] No user in session. Clearing user and role.');
+          setUser(null);
+          setRoleState(null);
         }
-      } else {
-        console.log('[AuthContext][getSession] No user in session. Before setUser(null) and setRoleState(null)');
-        setUser(null);
-        setRoleState(null);
-      }
-      console.log('[AuthContext][getSession] Before setIsLoading(false). Current state:', { user, session, role, isLoading });
-      setIsLoading(false);
-      console.log("[AuthContext][getSession] Initial session processing complete. isLoading set to false. isMounted:", isMounted);
-    }).catch(sessionError => {
-        if (!isMounted) {
-            console.log("[AuthContext][getSession] getSession().catch: Component unmounted, aborting state update.");
-            return;
-        }
-        console.error("[AuthContext][getSession] Error in supabase.auth.getSession() promise:", sessionError);
-        console.log('[AuthContext][getSession] Catch block. Before setIsLoading(false).');
-        setIsLoading(false);
-    });
-
-    const { data: authListenerData } = supabase.auth.onAuthStateChange(
-      async (event, newSession) => {
-        if (!isMounted) {
-            console.log("[AuthContext][onAuthStateChange] Callback: Component unmounted, aborting handler.");
-            return;
-        }
-        console.log('[AuthContext][onAuthStateChange] Auth event:', event, 'New session:', newSession, 'isMounted:', isMounted);
-        console.log('[AuthContext][onAuthStateChange] Before setIsLoading(true)');
-        setIsLoading(true);
-        try {
-          console.log('[AuthContext][onAuthStateChange] Before setSession:', newSession);
-          setSession(newSession);
-          if (newSession?.user) {
-            console.log('[AuthContext][onAuthStateChange] User found in new session. Fetching profile...');
-            const profile = await fetchUserProfile(newSession.user);
-            if (!isMounted) {
-                console.log("[AuthContext][onAuthStateChange] fetchUserProfile callback: Component unmounted, aborting state update.");
-                return;
-            }
-            console.log('[AuthContext][onAuthStateChange] Profile fetched:', profile);
-            console.log('[AuthContext][onAuthStateChange] Before setUser with profile:', { user: newSession.user, profile });
-            setUser({ ...newSession.user, profile });
-
-            if (profile?.role) {
-              console.log('[AuthContext][onAuthStateChange] Profile has role. Before setRoleState:', profile.role);
-              setRoleState(profile.role);
-              if (window.location.pathname === '/role-selection' || window.location.pathname === '/') {
-                console.log('[AuthContext][onAuthStateChange] Redirecting to /dashboard (role found, from /role-selection or /). Path:', window.location.pathname);
-                router.replace("/dashboard");
-              }
-            } else if (profile && window.location.pathname !== '/role-selection' && window.location.pathname !== '/') {
-              console.log('[AuthContext][onAuthStateChange] Profile exists but no role. Before setRoleState(null). Redirecting to /role-selection. Path:', window.location.pathname);
-              setRoleState(null);
-              router.replace("/role-selection");
-            } else if (!profile && event === 'SIGNED_IN' && window.location.pathname !== '/role-selection' && window.location.pathname !== '/') {
-               console.warn('[AuthContext][onAuthStateChange] No profile, SIGNED_IN. Before setRoleState(null). Redirecting to /role-selection. Path:', window.location.pathname);
-               setRoleState(null); // Ensure role is null
-               router.replace("/role-selection");
-            } else {
-              console.log('[AuthContext][onAuthStateChange] No specific redirect condition met for profile/role. Current role state:', profile?.role);
-              setRoleState(profile?.role || null); // Ensure role state matches profile
-            }
-          } else {
-            console.log('[AuthContext][onAuthStateChange] No user in new session. Before setUser(null) and setRoleState(null).');
-            setUser(null);
-            setRoleState(null);
-             if (window.location.pathname !== '/') {
-              console.log('[AuthContext][onAuthStateChange] Redirecting to / (no session, not on login page). Path:', window.location.pathname);
-              router.replace("/");
-            }
-          }
-        } catch (e: any) {
-          console.error("[AuthContext][onAuthStateChange] Error in handler:", e);
-          if (isMounted) {
-            setUser(null);
-            setRoleState(null);
-            toast({
-              title: "Error de Autenticación",
-              description: e.message || "Ocurrió un error durante el cambio de estado de autenticación.",
-              variant: "destructive",
-            });
-          }
-        } finally {
-          if (isMounted) {
-            console.log('[AuthContext][onAuthStateChange] Finally block. Before setIsLoading(false). Current isLoading:', isLoading);
+        
+        if (isMounted) {
+            console.log('[AuthContext][onAuthStateChange] Processed event. Setting isLoading to false.');
             setIsLoading(false);
-            console.log('[AuthContext][onAuthStateChange] isLoading set to false.');
-          }
+        } else {
+            console.log('[AuthContext][onAuthStateChange] Component unmounted before final setIsLoading(false) for event:', event);
         }
       }
     );
-    
-    const subscription = authListenerData?.subscription;
 
+    // Cleanup function
     return () => {
       isMounted = false;
-      subscription?.unsubscribe();
-      console.log("[AuthContext][useEffect] Cleanup. Unsubscribed from auth changes. Component unmounted.");
+      console.log("[AuthContext][useEffect] Unmount. Unsubscribing from auth changes.");
+      authListener?.subscription.unsubscribe();
     };
-  }, [router, fetchUserProfile, toast, supabase]); // supabase and fetchUserProfile are stable due to useMemo/useCallback
+  }, [fetchUserProfile, supabase]); // supabase and fetchUserProfile are stable
 
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
     const redirectURL = window.location.origin + "/auth/callback";
     console.log("[AuthContext] Constructed redirectTo URL for OAuth:", redirectURL);
+    // No need to set isLoading here, onAuthStateChange will handle it
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -234,12 +154,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
         variant: "destructive",
       });
+      if (isLoading) setIsLoading(false); // Ensure loading stops if oauth itself fails early
     }
     return { error };
   };
 
   const logout = async () => {
     console.log("[AuthContext] Attempting logout.");
+    setIsLoading(true); // Indicate loading during logout
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("[AuthContext] Error during signOut:", error);
@@ -249,12 +171,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: "destructive",
       });
     } else {
-      // Explicitly clear local state on successful logout
-      setUser(null);
-      setSession(null);
-      setRoleState(null);
-      router.push('/'); // Redirect to login page
+      // User, session, role will be cleared by onAuthStateChange
+      console.log("[AuthContext] signOut successful. Redirecting to /");
+      router.push('/'); 
     }
+    // onAuthStateChange will eventually set isLoading to false after processing SIGNED_OUT
+    // but if there's an error, ensure it's set.
+    if (error) setIsLoading(false); 
     return { error };
   };
 
@@ -269,7 +192,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
     console.log(`[AuthContext][setRole] Setting role to ${newRole} for user ${user.id}`);
-    console.log('[AuthContext][setRole] Before setIsLoading(true)');
     setIsLoading(true);
     try {
       const dataToUpsert: {
@@ -299,7 +221,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
       if (profileData) {
         console.log("[AuthContext][setRole] Profile upserted successfully with new role:", profileData);
-        console.log('[AuthContext][setRole] Before setRoleState:', newRole);
         setRoleState(newRole);
         const updatedProfile = {
             id: profileData.id,
@@ -307,8 +228,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             avatarUrl: profileData.avatar_url,
             role: profileData.role as Role,
         };
-        console.log('[AuthContext][setRole] Before setUser (updating profile with new role):', updatedProfile);
         setUser(currentUser => currentUser ? ({ ...currentUser, profile: updatedProfile }) : null);
+        console.log("[AuthContext][setRole] Role updated. Redirecting to /dashboard");
         router.push("/dashboard");
       } else {
         console.error("[AuthContext][setRole] Profile data was null after upsert, though no explicit error.");
@@ -326,9 +247,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: "destructive",
       });
     } finally {
-      console.log('[AuthContext][setRole] Finally block. Before setIsLoading(false). Current isLoading:', isLoading);
+      console.log('[AuthContext][setRole] Finally block. Setting isLoading to false.');
       setIsLoading(false);
-      console.log('[AuthContext][setRole] isLoading set to false.');
     }
   };
   
@@ -339,7 +259,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       value={{
         user,
         role,
-        isAuthenticated: !!user && !!session,
+        isAuthenticated: !!user && !!session, //isAuthenticated depends on both user and session
         isLoading,
         login,
         logout,
@@ -354,3 +274,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   );
 }
 
+    
