@@ -29,33 +29,23 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     console.error('[MyBookedTripsActions] User not authenticated:', authError?.message);
     return [];
   }
-  // CONSOLE.LOG ELIMINADO DE ESTA VERSIÓN PARA PRUEBA
+  // console.log('[MyBookedTripsActions] Querying trips for passenger_id:', user.id); // Re-commenting this out for now to ensure simplest state
+
+  const selectString = 
+    'id, status, requested_at, trip_id, ' +
+    'trips(id, origin, destination, departure_datetime, seats_available, driver_id, ' +
+    'profiles(full_name, avatar_url))';
 
   const { data: requests, error: requestsError } = await supabase
     .from('trip_requests')
-    .select(\`
-      id,
-      status,
-      requested_at,
-      trip_id,
-      trips (
-        id,
-        origin,
-        destination,
-        departure_datetime,
-        seats_available,
-        driver_id,
-        profiles (
-          full_name,
-          avatar_url
-        )
-      )
-    \`)
+    .select(selectString)
     .eq('passenger_id', user.id)
     .order('requested_at', { ascending: false });
 
   if (requestsError) {
     console.error('[MyBookedTripsActions] Error fetching passenger booked/requested trips:', requestsError);
+    // Log the full error object for more details
+    console.error('[MyBookedTripsActions] Supabase error object:', JSON.stringify(requestsError, null, 2));
     return [];
   }
 
@@ -71,7 +61,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     const driverName = driverProfile?.full_name || 'Conductor Anónimo';
     if (!driverAvatar || (typeof driverAvatar === 'string' && driverAvatar.trim() === '')) {
         const initials = (driverName.substring(0, 2).toUpperCase() || 'CA');
-        driverAvatar = \`https://placehold.co/100x100.png?text=\${encodeURIComponent(initials)}\`;
+        driverAvatar = `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`;
     }
 
 
