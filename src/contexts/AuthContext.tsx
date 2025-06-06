@@ -197,6 +197,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .from("profiles")
         .upsert([dataToUpsert], { onConflict: 'id' })
         .select("id, full_name, avatar_url, role")
+        .eq('id', user.id) // Added .eq filter
         .single();
 
       if (profileError) throw profileError;
@@ -241,3 +242,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
+
