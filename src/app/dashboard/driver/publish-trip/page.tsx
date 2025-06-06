@@ -28,7 +28,30 @@ const TripFormSchema = z.object({
   date: z.date({
     required_error: "Se requiere una fecha para el viaje.",
   }),
-  time: z.string().regex(/^([01]\\d|2[0-3]):([0-5]\\d)$/, "Formato de hora inválido (HH:MM)."),
+  time: z.string()
+    .transform((val) => {
+      console.log("[Zod Transform PublishTrip] Original time value:", val);
+      const meridiemMatch = val.match(/(\d{1,2}:\d{2})\s?(AM|PM)/i);
+      if (meridiemMatch) {
+        const timePart = meridiemMatch[1];
+        const meridiem = meridiemMatch[2].toUpperCase();
+        let [hours, minutes] = timePart.split(':').map(Number);
+
+        if (meridiem === 'PM' && hours < 12) {
+          hours += 12;
+        } else if (meridiem === 'AM' && hours === 12) { // 12 AM es 00 horas
+          hours = 0;
+        }
+        const formattedHours = hours.toString().padStart(2, '0');
+        const formattedMinutes = minutes.toString().padStart(2, '0');
+        const transformed = `${formattedHours}:${formattedMinutes}`;
+        console.log("[Zod Transform PublishTrip] Transformed time value:", transformed);
+        return transformed;
+      }
+      console.log("[Zod Transform PublishTrip] No AM/PM transformation, returning original:", val);
+      return val; 
+    })
+    .pipe(z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato de hora inválido (HH:MM requerido).")),
   seats: z.coerce.number().min(1, "Debe haber al menos 1 asiento disponible.").max(10, "Máximo 10 asientos."),
 }).refine(data => data.origin !== data.destination, {
   message: "El origen y el destino no pueden ser iguales.",
@@ -57,7 +80,7 @@ export default function PublishTripPage() {
       destination: "",
       time: "10:00", 
     },
-    mode: 'onSubmit', // Validate only on submit
+    mode: 'onSubmit',
   });
 
   useEffect(() => {
@@ -95,7 +118,7 @@ export default function PublishTripPage() {
   }, [toast, supabase]);
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
-    console.log("[PublishTripPage] Submitted data.time:", data.time); 
+    console.log("[PublishTripPage] Submitted data (after Zod transform if applicable):", data); 
     if (!user?.id) {
       toast({
         title: "Error de Autenticación",
@@ -106,14 +129,14 @@ export default function PublishTripPage() {
       return;
     }
     setIsSubmitting(true);
-    console.log("[PublishTripPage] Form data submitted:", data);
     console.log("[PublishTripPage] User ID:", user.id);
 
     try {
       const year = data.date.getFullYear();
       const month = (data.date.getMonth() + 1).toString().padStart(2, '0');
       const day = data.date.getDate().toString().padStart(2, '0');
-      const [hours, minutes] = data.time.split(':');
+      // data.time ya debería estar en formato HH:MM gracias a la transformación de Zod
+      const [hours, minutes] = data.time.split(':'); 
       
       const departureDateTime = `${year}-${month}-${day}T${hours}:${minutes}:00`;
       console.log("[PublishTripPage] Calculated departureDateTime:", departureDateTime);
@@ -332,3 +355,5 @@ export default function PublishTripPage() {
     </Card>
   );
 }
+
+    
