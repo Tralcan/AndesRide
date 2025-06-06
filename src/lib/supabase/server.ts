@@ -1,8 +1,8 @@
 // src/lib/supabase/server.ts
-"use server"; // Ensure this runs on the server
+// "use server"; // Removed: This directive was causing sync exports to be flagged as non-async Server Actions.
 
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
-import { cookies } from 'next/headers'; // This is fine here because of "use server"
+import { cookies } from 'next/headers'; // This is fine here because this module is only used server-side
 
 function checkServerEnvVars(context: string) {
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
@@ -18,7 +18,7 @@ function checkServerEnvVars(context: string) {
     const keyFound = supabaseAnonKey ? "found" : "MISSING or empty";
     console.error(`[${context}] Supabase URL is ${urlFound}, Anon Key is ${keyFound}. Both are required.`);
     throw new Error(
-      `Supabase URL or Anon Key is missing in server environment variables for ${context}. URL: ${supabaseUrl}, Key: ${supabaseAnonKey}`
+      `Supabase URL or Anon Key is missing in environment variables. URL: ${supabaseUrl}, Key: ${supabaseAnonKey}`
     );
   }
   return { supabaseUrl, supabaseAnonKey };
