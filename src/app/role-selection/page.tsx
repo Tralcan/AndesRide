@@ -6,25 +6,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES, Role as RoleType } from "@/lib/constants";
-import { Car, User, LogOut } from "lucide-react";
+import { Car, User, LogOut, Loader2 } from "lucide-react"; // Added Loader2
 import { useRouter } from "next/navigation";
-import { useEffect } from "react";
+import { useEffect, useState } from "react"; // Added useState
 import { Skeleton } from "@/components/ui/skeleton";
+import { useToast } from "@/hooks/use-toast"; // Added useToast
 
 export default function RoleSelectionPage() {
-  const { user, role, setRole, isLoading, logout, isAuthenticated } = useAuth();
+  const { user, setRole, isLoading: authIsLoading, logout, isAuthenticated } = useAuth();
   const router = useRouter();
+  const { toast } = useToast(); // Initialize toast
+  const [isSubmittingRole, setIsSubmittingRole] = useState(false); // Local loading state
 
   useEffect(() => {
-    if (!isLoading) {
+    if (!authIsLoading) {
       if (!isAuthenticated) {
         console.log("[RoleSelectionPage] User not authenticated, redirecting to /");
         router.replace("/");
       }
     }
-  }, [isLoading, isAuthenticated, router]);
+  }, [authIsLoading, isAuthenticated, router]);
 
-  if (isLoading && !user) { 
+  if (authIsLoading && !user) { 
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
         <Skeleton className="h-12 w-12 rounded-full mb-4" />
@@ -37,22 +40,30 @@ export default function RoleSelectionPage() {
   
   const handleSetRole = async (selectedRole: RoleType) => {
     console.log(`[RoleSelectionPage] User ${user?.id} attempting to set role: ${selectedRole}`);
-    if (selectedRole) {
-      await setRole(selectedRole);
-      // La redirección es manejada dentro de setRole en AuthContext (o debería serlo)
-      // Si no, se podría añadir un router.push("/dashboard") aquí, pero es mejor centralizarlo.
-    } else {
-      console.warn("[RoleSelectionPage] No role selected or invalid role.");
+    setIsSubmittingRole(true);
+    try {
+      if (selectedRole) {
+        await setRole(selectedRole);
+        // Redirection should be handled within setRole in AuthContext
+        console.log(`[RoleSelectionPage] setRole(${selectedRole}) promise should have resolved and navigated.`);
+      } else {
+        console.warn("[RoleSelectionPage] No role selected or invalid role.");
+        toast({ title: "Error de Selección", description: "No se seleccionó un rol válido.", variant: "destructive" });
+      }
+    } catch (error: any) {
+        console.error("[RoleSelectionPage] Error calling setRole from page:", error);
+        toast({ title: "Error al Procesar Rol", description: error.message || "Ocurrió un error al intentar establecer el rol.", variant: "destructive" });
+    } finally {
+        setIsSubmittingRole(false);
     }
   };
 
-  // Prioritize existing profile name, then metadata, then email
   const displayName = user?.profile?.fullName || user?.user_metadata?.full_name || user?.user_metadata?.name || user?.email || "Usuario";
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-gradient-to-br from-background to-secondary p-6">
       <div className="absolute top-6 right-6">
-        <Button variant="ghost" onClick={logout} aria-label="Cerrar sesión" disabled={isLoading}>
+        <Button variant="ghost" onClick={logout} aria-label="Cerrar sesión" disabled={authIsLoading || isSubmittingRole}>
           <LogOut className="mr-2 h-5 w-5" /> Cerrar Sesión
         </Button>
       </div>
@@ -66,13 +77,14 @@ export default function RoleSelectionPage() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Card 
             className="hover:shadow-xl transition-shadow cursor-pointer hover:border-primary"
-            onClick={() => handleSetRole(ROLES.DRIVER)}
-            tabIndex={0}
-            onKeyPress={(e) => e.key === 'Enter' && handleSetRole(ROLES.DRIVER)}
+            onClick={() => !isSubmittingRole && handleSetRole(ROLES.DRIVER)}
+            tabIndex={isSubmittingRole ? -1 : 0}
+            onKeyPress={(e) => e.key === 'Enter' && !isSubmittingRole && handleSetRole(ROLES.DRIVER)}
             aria-label="Seleccionar Rol de Conductor"
+            aria-disabled={isSubmittingRole}
           >
             <CardHeader className="items-center">
-              <Car className="h-12 w-12 text-primary mb-2" />
+              {isSubmittingRole ? <Loader2 className="h-12 w-12 text-primary mb-2 animate-spin" /> : <Car className="h-12 w-12 text-primary mb-2" />}
               <CardTitle className="text-2xl">Soy Conductor</CardTitle>
             </CardHeader>
             <CardContent>
@@ -84,13 +96,14 @@ export default function RoleSelectionPage() {
 
           <Card 
             className="hover:shadow-xl transition-shadow cursor-pointer hover:border-primary"
-            onClick={() => handleSetRole(ROLES.PASSENGER)}
-            tabIndex={0}
-            onKeyPress={(e) => e.key === 'Enter' && handleSetRole(ROLES.PASSENGER)}
+            onClick={() => !isSubmittingRole && handleSetRole(ROLES.PASSENGER)}
+            tabIndex={isSubmittingRole ? -1 : 0}
+            onKeyPress={(e) => e.key === 'Enter' && !isSubmittingRole && handleSetRole(ROLES.PASSENGER)}
             aria-label="Seleccionar Rol de Pasajero"
+            aria-disabled={isSubmittingRole}
           >
             <CardHeader className="items-center">
-              <User className="h-12 w-12 text-primary mb-2" />
+              {isSubmittingRole ? <Loader2 className="h-12 w-12 text-primary mb-2 animate-spin" /> : <User className="h-12 w-12 text-primary mb-2" />}
               <CardTitle className="text-2xl">Soy Pasajero</CardTitle>
             </CardHeader>
             <CardContent>
