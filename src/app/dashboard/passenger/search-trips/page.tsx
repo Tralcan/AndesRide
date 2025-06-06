@@ -1,10 +1,9 @@
-
 // src/app/dashboard/passenger/search-trips/page.tsx
 "use client";
 
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,10 +16,10 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { format as formatDateFns } from "date-fns"; 
 import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, SearchIcon, Loader2 } from "lucide-react";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { supabase } from "@/lib/supabaseClient"; 
+import { createClientComponentClient } from "@/lib/supabaseClient";
 
 const SearchFiltersSchemaClient = z.object({
   origin: z.string().optional(),
@@ -38,10 +37,11 @@ const ANY_ORIGIN_VALUE = "_ANY_ORIGIN_";
 const ANY_DESTINATION_VALUE = "_ANY_DESTINATION_";
 
 export default function SearchTripsPage() {
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const { toast } = useToast();
   const [filteredTrips, setFilteredTrips] = useState<TripSearchResult[]>([]);
-  const [isLoading, setIsLoading] = useState(true); // For initial page load state
-  const [isSearching, setIsSearching] = useState(false); // For active search operation
+  const [isLoading, setIsLoading] = useState(true); // For initial page load (locations + initial trips)
+  const [isSearching, setIsSearching] = useState(false); // For subsequent manual searches
   const [isSubmittingRequestId, setIsSubmittingRequestId] = useState<string | null>(null);
   const [origins, setOrigins] = useState<LocationOption[]>([]);
   const [destinations, setDestinations] = useState<LocationOption[]>([]);
@@ -68,7 +68,7 @@ export default function SearchTripsPage() {
     try {
       const trips = await searchSupabaseTrips(serverFilters);
       setFilteredTrips(trips);
-      if (searchData) { // Only show toast for manual searches initiated by user
+      if (searchData) { // Only show toast for manual searches
         toast({
           title: trips.length > 0 ? "Búsqueda Actualizada" : "No se encontraron viajes",
           description: trips.length > 0 
@@ -85,9 +85,8 @@ export default function SearchTripsPage() {
     } finally {
       setIsSearching(false);
     }
-  }, [toast, form]); // form is stable, toast is stable
+  }, [toast, form]); // Removed performSearch from its own dependencies
 
-  // Effect for initial data loading (locations and first set of trips)
   useEffect(() => {
     let isMounted = true;
     setIsLoading(true);
@@ -123,15 +122,14 @@ export default function SearchTripsPage() {
         if (isMounted) setIsLoadingLocations(false);
       }
 
-      // Fetch initial trips (all available by default)
-      // We pass undefined to performSearch to use default filters (all trips)
-      // and false for the second argument to suppress the toast for initial load.
+      // Fetch initial trips (all available)
       const initialServerFilters = {
         origin: ANY_ORIGIN_VALUE,
         destination: ANY_DESTINATION_VALUE,
         date: undefined,
       };
        try {
+        // Do not call performSearch here for initial load to avoid setting isSearching true
         const trips = await searchSupabaseTrips(initialServerFilters);
         if (isMounted) {
           setFilteredTrips(trips);
@@ -151,17 +149,17 @@ export default function SearchTripsPage() {
           });
         }
       } finally {
-        if (isMounted) setIsLoading(false); // This marks the end of the initial page load
+        if (isMounted) setIsLoading(false); // Set main loading to false after all initial data is fetched
       }
     }
 
     fetchInitialData();
     
     return () => { isMounted = false; };
-  }, [toast]); // Only runs once on mount
+  }, [toast, supabase]); // Dependencies for initial load
 
   const onSubmit = async (data: SearchFiltersClient) => {
-    await performSearch(data);
+    await performSearch(data); // Call performSearch for manual form submissions
   };
   
   const handleRequestRide = async (tripId: string) => {
@@ -175,8 +173,8 @@ export default function SearchTripsPage() {
       });
 
       if (result.success && !result.alreadyRequested) {
-        // Re-fetch trips to update available seats using current filters
-        await performSearch(form.getValues());
+        // Re-fetch trips to update seat counts
+        await performSearch(form.getValues()); 
       }
     } catch (error: any) {
       toast({
@@ -195,9 +193,7 @@ export default function SearchTripsPage() {
       destination: ANY_DESTINATION_VALUE, 
       date: undefined 
     });
-    // Pass undefined to performSearch to signify it's a 'clear filters' action using default/all trips logic
-    // The true argument is to show a toast for this manual action.
-    await performSearch(form.getValues()); // Will use the reset values
+    await performSearch(form.getValues()); // Use the reset form values
     toast({ title: "Filtros Limpiados", description: "Mostrando todos los viajes disponibles."});
   };
 
@@ -340,7 +336,7 @@ export default function SearchTripsPage() {
         </CardContent>
       </Card>
 
-      {isLoading ? ( // Show loader if initial page load is in progress
+      {isLoading ? (
          <div className="flex justify-center items-center h-64">
             <Loader2 className="h-12 w-12 animate-spin text-primary" />
             <p className="ml-4 text-lg text-muted-foreground">Cargando viajes disponibles...</p>
@@ -364,7 +360,7 @@ export default function SearchTripsPage() {
             />
           ))}
         </div>
-      ) : ( // Shown if not loading and no trips were found (after initial load or a search)
+      ) : (
         <Card className="text-center py-12 shadow-md">
           <CardContent>
             <SearchIcon className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
@@ -378,4 +374,3 @@ export default function SearchTripsPage() {
     </div>
   );
 }
-

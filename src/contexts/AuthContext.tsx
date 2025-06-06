@@ -1,13 +1,12 @@
-
 // src/contexts/AuthContext.tsx
 "use client";
 
 import type { Role } from "@/lib/constants";
-import { supabase } from "@/lib/supabaseClient";
-import type { AuthError, AuthSubscription, Session, User as SupabaseUser } from "@supabase/supabase-js";
+import { createClientComponentClient } from "@/lib/supabaseClient";
+import type { AuthError, AuthSubscription, Session, User as SupabaseUser, SupabaseClient } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactNode, SetStateAction} from "react";
-import { createContext, useState, useEffect, useCallback } from "react";
+import { createContext, useState, useEffect, useCallback, useMemo } from "react";
 import { useToast } from "@/hooks/use-toast";
 
 interface UserProfile {
@@ -17,7 +16,6 @@ interface UserProfile {
   role: Role | null;
 }
 
-// Combinamos el usuario de Supabase Auth con nuestro perfil
 interface User extends SupabaseUser {
   profile: UserProfile | null;
 }
@@ -32,11 +30,14 @@ interface AuthContextType {
   setRole: (newRole: Role) => Promise<void>;
   setUser: Dispatch<SetStateAction<User | null>>;
   session: Session | null;
+  supabase: SupabaseClient;
 }
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
+  const supabase = useMemo(() => createClientComponentClient(), []);
+
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRoleState] = useState<Role>(null);
@@ -76,7 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     console.log("[AuthContext] No profile data returned, though no explicit error, for user:", supabaseUser.id);
     return null;
-  }, [toast]);
+  }, [toast, supabase]);
 
   useEffect(() => {
     let isMounted = true;
@@ -142,11 +143,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
                 router.replace("/dashboard");
               }
             } else if (profile && window.location.pathname !== '/role-selection' && window.location.pathname !== '/') {
-              // User has a profile entry but no role assigned in it
               console.log('[AuthContext] Profile exists but no role. Redirecting to /role-selection.');
               router.replace("/role-selection");
             } else if (!profile && event === 'SIGNED_IN' && window.location.pathname !== '/role-selection' && window.location.pathname !== '/') {
-               // User just signed in, and no profile exists yet.
                console.warn('[AuthContext] User signed in, no profile found. Redirecting to /role-selection.');
                router.replace("/role-selection");
             }
@@ -186,12 +185,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       subscription?.unsubscribe();
       console.log("[AuthContext] Unsubscribed from auth changes. Component unmounted.");
     };
-  }, [router, fetchUserProfile, toast]);
+  }, [router, fetchUserProfile, toast, supabase]);
 
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
-    // Change: Redirect to origin, let Supabase client handle the fragment.
-    const redirectURL = window.location.origin; 
+    const redirectURL = window.location.origin + "/auth/callback";
     console.log("[AuthContext] Constructed redirectTo URL for OAuth:", redirectURL);
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -308,11 +306,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setRole: setRoleAndUpdateProfile,
         setUser,
         session,
+        supabase,
       }}
     >
       {children}
     </AuthContext.Provider>
   );
 }
-
-    

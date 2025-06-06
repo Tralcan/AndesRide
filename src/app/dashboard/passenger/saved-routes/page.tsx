@@ -1,4 +1,3 @@
-
 // src/app/dashboard/passenger/saved-routes/page.tsx
 "use client";
 
@@ -15,11 +14,11 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, BookmarkPlus, BellRing, Trash2, Route } from "lucide-react";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { watchRoute, type WatchRouteInput } from "@/ai/flows/route-watcher";
-import { supabase } from "@/lib/supabaseClient";
+import { createClientComponentClient } from "@/lib/supabaseClient";
 
 const SavedRouteSchema = z.object({
   origin: z.string().min(1, "Por favor selecciona un origen."),
@@ -39,6 +38,7 @@ interface LocationOption {
 }
 
 export default function SavedRoutesPage() {
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const { user } = useAuth();
   const { toast } = useToast();
   const [savedRoutes, setSavedRoutes] = useState<SavedRouteItem[]>([]);
@@ -84,7 +84,7 @@ export default function SavedRoutesPage() {
       }
     }
     fetchLocations();
-  }, [toast]);
+  }, [toast, supabase]);
 
   async function onSubmit(data: z.infer<typeof SavedRouteSchema>) {
     if (!user?.email) {
@@ -292,5 +292,3 @@ export default function SavedRoutesPage() {
     </div>
   );
 }
-
-    

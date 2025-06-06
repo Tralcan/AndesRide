@@ -1,4 +1,3 @@
-
 // src/app/dashboard/driver/publish-trip/page.tsx
 "use client";
 
@@ -9,18 +8,18 @@ import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, For
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { useAuth } from "@/hooks/useAuth"; // Import useAuth
+import { useAuth } from "@/hooks/useAuth"; 
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabaseClient";
+import { createClientComponentClient } from "@/lib/supabaseClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, Users, PlusCircle, Clock } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation"; // Import useRouter
+import { useState, useEffect, useMemo } from "react";
+import { useRouter } from "next/navigation";
 
 const TripFormSchema = z.object({
   origin: z.string().min(1, "Por favor selecciona un origen."),
@@ -28,7 +27,7 @@ const TripFormSchema = z.object({
   date: z.date({
     required_error: "Se requiere una fecha para el viaje.",
   }),
-  time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato de hora inválido (HH:MM)."),
+  time: z.string().regex(/^([01]\\d|2[0-3]):([0-5]\\d)$/, "Formato de hora inválido (HH:MM)."),
   seats: z.coerce.number().min(1, "Debe haber al menos 1 asiento disponible.").max(10, "Máximo 10 asientos."),
 }).refine(data => data.origin !== data.destination, {
   message: "El origen y el destino no pueden ser iguales.",
@@ -40,13 +39,14 @@ interface LocationOption {
 }
 
 export default function PublishTripPage() {
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const { toast } = useToast();
-  const { user } = useAuth(); // Get user from AuthContext
+  const { user } = useAuth();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [origins, setOrigins] = useState<LocationOption[]>([]);
   const [destinations, setDestinations] = useState<LocationOption[]>([]);
   const [isLoadingLocations, setIsLoadingLocations] = useState(true);
-  const router = useRouter(); // Initialize useRouter
+  const router = useRouter();
   
   const form = useForm<z.infer<typeof TripFormSchema>>({
     resolver: zodResolver(TripFormSchema),
@@ -54,7 +54,7 @@ export default function PublishTripPage() {
       seats: 1,
       origin: "",
       destination: "",
-      time: "10:00", // Default time
+      time: "10:00",
     },
   });
 
@@ -90,7 +90,7 @@ export default function PublishTripPage() {
       }
     }
     fetchLocations();
-  }, [toast]);
+  }, [toast, supabase]);
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
     if (!user?.id) {
@@ -129,7 +129,7 @@ export default function PublishTripPage() {
 
       if (error) {
         console.error("[PublishTripPage] Supabase insert error:", JSON.stringify(error, null, 2));
-        throw error; // Re-throw to be caught by the catch block
+        throw error;
       }
 
       console.log("[PublishTripPage] Supabase insert success. Returned data:", insertedData);
@@ -140,7 +140,7 @@ export default function PublishTripPage() {
         variant: "default"
       });
       form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "10:00" });
-      router.push("/dashboard"); // Redirect to dashboard
+      router.push("/dashboard");
     } catch (error: any) {
       console.error("[PublishTripPage] Error publishing trip in catch block:", error);
       toast({
@@ -329,4 +329,3 @@ export default function PublishTripPage() {
     </Card>
   );
 }
-

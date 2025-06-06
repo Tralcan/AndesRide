@@ -1,8 +1,7 @@
-
 // src/app/dashboard/actions.ts
 'use server';
 
-import { supabase } from '@/lib/supabaseClient';
+import { createServerActionClient } from '@/lib/supabaseClient';
 import { generatePromotionalImageForBrand, type GeneratePromotionalImageInput } from '@/ai/flows/generate-promo-image-flow';
 
 interface BrandFromSupabase {
@@ -15,6 +14,7 @@ interface BrandFromSupabase {
 }
 
 async function getActiveBrands(): Promise<BrandFromSupabase[]> {
+  const supabase = createServerActionClient();
   const { data, error } = await supabase
     .from('marcas')
     .select('id, nombre, imagen_logo_url, texto_promocion, prompt_ia, porcentaje_aparicion')
@@ -52,7 +52,6 @@ export interface PromoDisplayData {
   generatedImageUri: string;
   brandName: string;
   brandLogoUrl: string | null;
-  // texto_promocion is now part of the image
   hasError?: boolean;
 }
 
@@ -80,13 +79,12 @@ export async function getDashboardPromoData(): Promise<PromoDisplayData> {
     const genkitInput: GeneratePromotionalImageInput = {
       brandName: selectedBrand.nombre,
       customPrompt: selectedBrand.prompt_ia || undefined,
-      promoText: selectedBrand.texto_promocion || undefined, // Pass promo text to the flow
+      promoText: selectedBrand.texto_promocion || undefined,
     };
 
     console.log(`[actions.ts] Requesting image for brand: ${selectedBrand.nombre} with promo text: ${selectedBrand.texto_promocion}`);
     const imageResult = await generatePromotionalImageForBrand(genkitInput);
     console.log(`[actions.ts] Image URI received: ${imageResult.imageDataUri.substring(0,50)}...`);
-
 
     return {
       generatedImageUri: imageResult.imageDataUri,
@@ -99,4 +97,3 @@ export async function getDashboardPromoData(): Promise<PromoDisplayData> {
     return { ...FALLBACK_PROMO_DATA, hasError: true }; 
   }
 }
-

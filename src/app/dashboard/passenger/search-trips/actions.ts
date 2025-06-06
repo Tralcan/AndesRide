@@ -1,10 +1,9 @@
-
 // src/app/dashboard/passenger/search-trips/actions.ts
 'use server';
 
-import { supabase } from '@/lib/supabaseClient';
+import { createServerActionClient } from '@/lib/supabaseClient';
 import { z } from 'zod';
-import { cookies } from 'next/headers'; // Import cookies
+import { cookies } from 'next/headers';
 
 const SearchFiltersSchema = z.object({
   origin: z.string().optional(),
@@ -28,6 +27,7 @@ const ANY_ORIGIN_VALUE = "_ANY_ORIGIN_";
 const ANY_DESTINATION_VALUE = "_ANY_DESTINATION_";
 
 export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripSearchResult[]> {
+  const supabase = createServerActionClient();
   console.log('[searchSupabaseTrips] Received filters for RPC call:', JSON.stringify(filters, null, 2));
 
   const params = {
@@ -69,7 +69,7 @@ export async function searchSupabaseTrips(filters: SearchFilters): Promise<TripS
         origin: trip_from_rpc.origin,
         destination: trip_from_rpc.destination,
         departure_datetime: trip_from_rpc.departure_datetime,
-        availableSeats: trip_from_rpc.seats_available,
+        availableSeats: trip_from_rpc.seats_available, // This comes from the RPC as effective_seats_available
         driverName: driverName,
         driverAvatar: driverAvatar,
       };
@@ -91,10 +91,12 @@ export interface RequestTripSeatResult {
 }
 
 export async function requestTripSeatAction(tripId: string): Promise<RequestTripSeatResult> {
+  const supabase = createServerActionClient();
   try {
     console.log('[requestTripSeatAction] Action initiated for tripId:', tripId);
+    
     console.log('[requestTripSeatAction] Attempting to read cookies on server...');
-    const cookieStore = cookies();
+    const cookieStore = cookies(); // Make sure cookies is imported from 'next/headers'
     const allCookies = cookieStore.getAll();
     console.log('[requestTripSeatAction] All cookies received by server action:', JSON.stringify(allCookies, null, 2));
 
@@ -105,7 +107,6 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
         console.warn('[requestTripSeatAction] No Supabase-related cookies found in the request.');
     }
 
-    // Obtener el usuario autenticado directamente en la Server Action
     const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError) {
@@ -120,7 +121,6 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
     console.log('[requestTripSeatAction] User successfully retrieved on server:', { id: user.id, email: user.email });
     const passenger_id = user.id;
 
-    // Primero, verificar si el usuario ya ha solicitado este viaje
     const { data: existingRequest, error: selectError } = await supabase
       .from('trip_requests')
       .select('id')
@@ -137,10 +137,6 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
       console.log('[requestTripSeatAction] User has already requested this trip.');
       return { success: true, message: "Ya has solicitado un asiento en este viaje.", alreadyRequested: true };
     }
-
-    // La función RPC search_trips_with_driver_info ya debería filtrar viajes sin cupos.
-    // Aquí podríamos añadir una comprobación más explícita si es necesario,
-    // pero es mejor que la fuente de verdad (la función RPC) maneje la disponibilidad de asientos.
 
     const { error: insertError } = await supabase
       .from('trip_requests')

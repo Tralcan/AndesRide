@@ -1,11 +1,10 @@
-
 // src/app/dashboard/driver/manage-trips/page.tsx
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import type { Locale } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
-import { supabase } from "@/lib/supabaseClient";
+import { createClientComponentClient } from "@/lib/supabaseClient";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import {
@@ -34,7 +33,6 @@ interface Trip {
   driver_id: string;
 }
 
-// Helper function for safe date formatting
 const safeFormatDate = (dateInput: string | Date, formatString: string, options?: { locale?: Locale }): string => {
   try {
     const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
@@ -50,6 +48,7 @@ const safeFormatDate = (dateInput: string | Date, formatString: string, options?
 };
 
 export default function ManageTripsPage() {
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const { user } = useAuth();
   const { toast } = useToast();
   const [trips, setTrips] = useState<Trip[]>([]);
@@ -90,7 +89,7 @@ export default function ManageTripsPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [user, toast]);
+  }, [user, toast, supabase]);
 
   useEffect(() => {
     fetchTrips();

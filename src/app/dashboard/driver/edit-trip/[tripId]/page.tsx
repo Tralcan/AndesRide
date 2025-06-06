@@ -1,4 +1,3 @@
-
 // src/app/dashboard/driver/edit-trip/[tripId]/page.tsx
 "use client";
 
@@ -12,14 +11,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useAuth } from "@/hooks/useAuth";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
-import { supabase } from "@/lib/supabaseClient";
+import { createClientComponentClient } from "@/lib/supabaseClient";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
 import { CalendarIcon, MapPin, Users, Edit3, Clock, Loader2, Frown, ArrowLeft } from "lucide-react";
 import { useForm } from "react-hook-form";
 import { z } from "zod";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
 
@@ -29,7 +28,7 @@ const TripFormSchema = z.object({
   date: z.date({
     required_error: "Se requiere una fecha para el viaje.",
   }),
-  time: z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato de hora inválido (HH:MM)."),
+  time: z.string().regex(/^([01]\\d|2[0-3]):([0-5]\\d)$/, "Formato de hora inválido (HH:MM)."),
   seats: z.coerce.number().min(1, "Debe haber al menos 1 asiento disponible.").max(10, "Máximo 10 asientos."),
 }).refine(data => data.origin !== data.destination, {
   message: "El origen y el destino no pueden ser iguales.",
@@ -40,15 +39,8 @@ interface LocationOption {
   nombre: string;
 }
 
-interface TripData {
-  origin: string;
-  destination: string;
-  departure_datetime: string; // ISO string
-  seats_available: number;
-}
-
-
 export default function EditTripPage() {
+  const supabase = useMemo(() => createClientComponentClient(), []);
   const { toast } = useToast();
   const { user } = useAuth();
   const router = useRouter();
@@ -117,7 +109,7 @@ export default function EditTripPage() {
     } finally {
       setIsLoadingTripData(false);
     }
-  }, [tripId, user?.id, form, toast]);
+  }, [tripId, user?.id, form, toast, supabase]);
   
   const fetchLocations = useCallback(async () => {
       setIsLoadingLocations(true);
@@ -145,7 +137,7 @@ export default function EditTripPage() {
       } finally {
         setIsLoadingLocations(false);
       }
-  }, [toast]);
+  }, [toast, supabase]);
 
   useEffect(() => {
     fetchLocations();
@@ -169,19 +161,18 @@ export default function EditTripPage() {
       const departureDateTime = `${year}-${month}-${day}T${hours}:${minutes}:00`;
 
       const tripToUpdate = {
-        // driver_id: user.id, // No es necesario actualizar el driver_id
         origin: data.origin,
         destination: data.destination,
         departure_datetime: departureDateTime,
         seats_available: data.seats,
-        updated_at: new Date().toISOString(), // Actualizar timestamp
+        updated_at: new Date().toISOString(),
       };
       
       const { error: updateError } = await supabase
         .from('trips')
         .update(tripToUpdate)
         .eq('id', tripId)
-        .eq('driver_id', user.id); // Doble chequeo de seguridad
+        .eq('driver_id', user.id);
 
       if (updateError) throw updateError;
 
@@ -410,4 +401,3 @@ export default function EditTripPage() {
     </Card>
   );
 }
-
