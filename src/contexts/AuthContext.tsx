@@ -4,7 +4,7 @@
 
 import type { Role } from "@/lib/constants";
 import { createClientComponentClient } from '@/lib/supabase/client';
-import type { AuthError, AuthSubscription, Session, User as SupabaseUser, SupabaseClient } from "@supabase/supabase-js";
+import type { AuthError, AuthSubscription, Session, User as SupabaseUser, SupabaseClient, PostgrestError } from "@supabase/supabase-js";
 import { useRouter } from "next/navigation";
 import type { Dispatch, ReactNode, SetStateAction} from "react";
 import { createContext, useState, useEffect, useCallback, useMemo } from "react";
@@ -55,27 +55,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     if (error) {
       console.error("[AuthContext][fetchUserProfile] Error fetching user profile:", JSON.stringify(error, null, 2));
-      const generalErrorMessage = "No se pudo cargar tu perfil de usuario: ";
-      let specificDetail = error.message;
-
-      if (error.message.toLowerCase().includes("infinite recursion detected in policy for relation \"trips\"")) {
-        specificDetail = "Se detectó una recursión infinita en las políticas de seguridad (RLS). Por favor, revisa las políticas, especialmente en la tabla 'trips'.";
-         toast({
-          title: "Error Crítico de RLS",
-          description: specificDetail,
-          variant: "destructive",
-          duration: 15000, 
-        });
-      } else if (error.code === 'PGRST116') { 
+      let title = "Error de Perfil";
+      let description = `No se pudo cargar tu perfil de usuario: ${error.message}`;
+      if (error.message.toLowerCase().includes("infinite recursion detected")) {
+        title = "Error Crítico de RLS";
+        description = "Se detectó una recursión infinita en las políticas de seguridad (RLS). Por favor, revisa las políticas, especialmente en la tabla 'trips'.";
+      } else if (error.code === 'PGRST116') {
         console.warn("[AuthContext][fetchUserProfile] No profile found for user (PGRST116):", supabaseUser.id, "This is often normal for new users.");
-        return null;
-      } else {
-         toast({
-          title: "Error de Perfil",
-          description: generalErrorMessage + specificDetail,
-          variant: "destructive",
-        });
+        return null; // No profile found is not necessarily an error to toast for every fetch
       }
+       toast({ title, description, variant: "destructive", duration: 7000 });
       return null;
     }
     if (data) {
@@ -101,15 +90,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[AuthContext][onAuthStateChange] Component unmounted, ignoring auth event:", event);
           return;
         }
-        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}. Current isLoading (before processing): ${isLoading}`);
+        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}.`);
         
         setSession(currentSession);
 
         if (currentSession?.user) {
-          // Set user state immediately with Supabase user, profile will be fetched.
           setUser(prevUser => ({ ...currentSession.user, profile: prevUser?.profile || null }));
           
-          // Set isLoading to false BEFORE async profile fetch if it's still true.
           if (isLoading && isMounted) {
             console.log('[AuthContext][onAuthStateChange] User session confirmed. Setting isLoading to false BEFORE profile fetch.');
             setIsLoading(false);
@@ -128,17 +115,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRoleState(profile.role || null);
             console.log('[AuthContext][onAuthStateChange] User profile and role updated after fetch. Role:', profile.role);
           } else {
-            // No profile found or error, role should be null.
             setRoleState(null);
             console.log('[AuthContext][onAuthStateChange] No profile found or error during fetch. Role explicitly set to null.');
           }
 
         } else {
-          // No user session.
           console.log('[AuthContext][onAuthStateChange] No user in session. Clearing user and role.');
           setUser(null);
           setRoleState(null);
-          if (isLoading && isMounted) { // Ensure isLoading is false if there's no session.
+          if (isLoading && isMounted) { 
             console.log('[AuthContext][onAuthStateChange] No user session. Setting isLoading to false.');
             setIsLoading(false); 
           }
@@ -146,40 +131,31 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // Initial session check.
     (async () => {
-      if (isMounted && isLoading) { // Only run if still loading
+      if (isMounted && isLoading) { 
         console.log("[AuthContext][useEffect] Performing initial session check as isLoading is true.");
         const { data: { session: initialSession } } = await supabase.auth.getSession();
         console.log("[AuthContext][useEffect] Initial session check result. Session available:", !!initialSession);
-        // If onAuthStateChange hasn't fired yet and there's no session, set loading to false.
-        // If there IS a session, onAuthStateChange will handle setting user and then isLoading.
         if (!initialSession?.user) { 
-          if (isMounted && isLoading) { // Double check isLoading, as onAuthStateChange might have run.
+          if (isMounted && isLoading) { 
              console.log("[AuthContext][useEffect] No initial session, setting isLoading to false.");
              setIsLoading(false);
           }
-        } else if (isMounted && isLoading) {
-           // Initial session exists. onAuthStateChange should take over.
-           // Log just in case, but usually onAuthStateChange will set isLoading false.
-           console.log("[AuthContext][useEffect] Initial session found. isLoading might be set to false by onAuthStateChange or here if still true.");
         }
       }
     })();
-
 
     return () => {
       isMounted = false;
       console.log("[AuthContext][useEffect] Unmounting. Unsubscribing from auth changes.");
       authListener?.subscription.unsubscribe();
     };
-  }, [fetchUserProfile, supabase]); // Removed isLoading from dependency array
+  }, [fetchUserProfile, supabase, isLoading]);
 
 
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
     const redirectURL = window.location.origin + "/auth/callback";
-    // setIsLoading(true); // isLoading is handled by onAuthStateChange now primarily
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
       options: {
@@ -193,14 +169,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
         variant: "destructive",
       });
-      // if (isLoading) setIsLoading(false); // isLoading handled by onAuthStateChange
     }
     return { error };
   };
 
   const logout = async () => {
     console.log("[AuthContext] Attempting logout.");
-    // setIsLoading(true); // isLoading handled by onAuthStateChange
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("[AuthContext] Error during signOut:", error);
@@ -210,7 +184,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: "destructive",
       });
     }
-    // User and role will be cleared by onAuthStateChange
     return { error };
   };
 
@@ -229,40 +202,51 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     console.log("[AuthContext][setRole] DEBUG: About to start profile upsert and fetch...");
 
-    const userMetaData = user.user_metadata;
-    const dataToUpsert = {
+    const userFullName = user.user_metadata?.full_name || user.user_metadata?.name || user.email;
+    const userAvatarUrl = user.user_metadata?.avatar_url;
+
+    const dataToUpsert: { id: string; role: Role; updated_at: string; full_name: string | null; avatar_url?: string | null } = {
       id: user.id,
       role: newRole,
-      full_name: userMetaData?.full_name || userMetaData?.name || user.email || "Usuario Anónimo",
-      avatar_url: userMetaData?.avatar_url || null, // Ensure null if undefined
+      updated_at: new Date().toISOString(),
+      full_name: userFullName || "Usuario Anónimo", // Ensure full_name is never undefined
     };
-    console.log("[AuthContext][setRole] Data to upsert:", JSON.stringify(dataToUpsert, null, 2));
+    if (userAvatarUrl) {
+      dataToUpsert.avatar_url = userAvatarUrl;
+    }
 
+    console.log("[AuthContext][setRole] PUNTO A: Antes del upsert a profiles. Data:", JSON.stringify(dataToUpsert, null, 2));
+    
     try {
-      console.log("[AuthContext][setRole] PUNTO A: Antes del upsert a profiles.");
-      const { error: upsertErrorOnly } = await supabase
+      const { error: upsertError } = await supabase
         .from("profiles")
-        .upsert(dataToUpsert, { onConflict: 'id' });
-      console.log(`[AuthContext][setRole] PUNTO B: Después del upsert a profiles. Error de Upsert: ${JSON.stringify(upsertErrorOnly, null, 2)}`);
+        .upsert(dataToUpsert); // Separated upsert
 
-      if (upsertErrorOnly) {
-        console.error("[AuthContext][setRole] Error upserting profile:", JSON.stringify(upsertErrorOnly, null, 2));
+      console.log("[AuthContext][setRole] PUNTO B: Después del upsert a profiles. Error de Upsert:", upsertError ? JSON.stringify(upsertError, null, 2) : "No Error");
+
+      if (upsertError) {
+        console.error("[AuthContext][setRole] Error upserting profile:", JSON.stringify(upsertError, null, 2));
+        let toastMessage = `No se pudo guardar tu rol: ${upsertError.message}`;
+        if (upsertError.message.includes("violates row-level security policy")) { // Check for RLS violation message
+            toastMessage = "Error de RLS: No tienes permiso para actualizar tu perfil. Revisa las políticas de INSERT/UPDATE en la tabla 'profiles'.";
+        }
         toast({
           title: "Error al Guardar Rol (Upsert)",
-          description: `No se pudo guardar tu rol: ${upsertErrorOnly.message}`,
+          description: toastMessage,
           variant: "destructive",
+          duration: 9000,
         });
         return; 
       }
       console.log("[AuthContext][setRole] Profile upsert successful for role:", newRole);
       
-      console.log("[AuthContext][setRole] PUNTO C: Antes del select del perfil post-upsert.");
+      console.log("[AuthContext][setRole] PUNTO C: Antes del select del perfil post-upsert. User ID:", user.id);
       const { data: profileData, error: profileError } = await supabase
         .from("profiles")
         .select("id, full_name, avatar_url, role")
         .eq("id", user.id)
         .single();
-      console.log(`[AuthContext][setRole] PUNTO D: Después del select del perfil post-upsert. Datos del perfil: ${JSON.stringify(profileData, null, 2)}, Error de Select: ${JSON.stringify(profileError, null, 2)}`);
+      console.log(`[AuthContext][setRole] PUNTO D: Después del select del perfil post-upsert. Datos del perfil: ${JSON.stringify(profileData, null, 2)}, Error de Select: ${profileError ? JSON.stringify(profileError, null, 2) : "No Error"}`);
 
       if (profileError) {
         console.error("[AuthContext][setRole] Error fetching profile after upsert:", JSON.stringify(profileError, null, 2));
@@ -271,10 +255,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           description: `No se pudo verificar el rol guardado: ${profileError.message}`,
           variant: "destructive",
         });
-        // Attempt to set role optimistically if select fails but upsert was ok
-        // setRoleState(newRole); 
-        // setUser(currentUser => currentUser ? ({ ...currentUser, profile: { ...currentUser.profile, id: dataToUpsert.id, fullName: dataToUpsert.full_name, avatarUrl: dataToUpsert.avatar_url, role: newRole } as UserProfile }) : null);
-        // router.push("/dashboard"); // Maybe still navigate if upsert was okay? Risky.
         return;
       }
 
@@ -300,8 +280,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("[AuthContext][setRole] No profile data returned after upsert/select, but no explicit select error. This is unexpected.");
         toast({
           title: "Error Inesperado de Perfil",
-          description: "No se recibieron datos del perfil después de guardar el rol, aunque no hubo un error de selección explícito.",
+          description: "No se recibieron datos del perfil después de guardar el rol, aunque no hubo un error de selección explícito. Esto puede indicar un problema con RLS SELECT en 'profiles'.",
           variant: "destructive",
+          duration: 9000,
         });
       }
     } catch (error: any) {
@@ -334,5 +315,4 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
-
     
