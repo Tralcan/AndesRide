@@ -29,9 +29,9 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     console.error('[MyBookedTripsActions] User not authenticated:', authError?.message);
     return [];
   }
-  // console.log('[MyBookedTripsActions] Querying trips for passenger_id:', user.id); // Re-commenting this out for now to ensure simplest state
+  console.log('[MyBookedTripsActions] Querying trips for passenger_id:', user.id);
 
-  const selectString = 
+  const selectString =
     'id, status, requested_at, trip_id, ' +
     'trips(id, origin, destination, departure_datetime, seats_available, driver_id, ' +
     'profiles(full_name, avatar_url))';
@@ -44,18 +44,29 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
 
   if (requestsError) {
     console.error('[MyBookedTripsActions] Error fetching passenger booked/requested trips:', requestsError);
-    // Log the full error object for more details
     console.error('[MyBookedTripsActions] Supabase error object:', JSON.stringify(requestsError, null, 2));
     return [];
   }
 
   if (!requests) {
+    console.log('[MyBookedTripsActions] No requests data structure returned from Supabase (requests is null/undefined).');
     return [];
   }
 
-  return requests.map(req => {
+  console.log('[MyBookedTripsActions] Raw requests from Supabase for passenger_id', user.id, ':', JSON.stringify(requests, null, 2));
+
+  if (requests.length === 0) {
+    console.log('[MyBookedTripsActions] Zero requests found in Supabase query result for this passenger.');
+    return [];
+  }
+
+  const mappedTrips = requests.map(req => {
+    console.log(`[MyBookedTripsActions] Processing request ID: ${req.id}, status: ${req.status}`);
     const tripData = req.trips as any; // Cast because Supabase types can be complex here
     const driverProfile = tripData?.profiles as any;
+
+    console.log(`[MyBookedTripsActions]   Raw associated tripData for request ${req.id}:`, JSON.stringify(tripData, null, 2));
+    console.log(`[MyBookedTripsActions]   Raw associated driverProfile for request ${req.id}:`, JSON.stringify(driverProfile, null, 2));
 
     let driverAvatar = driverProfile?.avatar_url;
     const driverName = driverProfile?.full_name || 'Conductor Anónimo';
@@ -64,10 +75,9 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
         driverAvatar = `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`;
     }
 
-
-    return {
+    const bookedTrip: BookedTrip = {
       requestId: req.id,
-      tripId: tripData?.id || 'N/A',
+      tripId: tripData?.id || 'N/A_TRIP_ID_MISSING', // Make it more obvious if tripId is missing
       origin: tripData?.origin || 'N/A',
       destination: tripData?.destination || 'N/A',
       departureDateTime: tripData?.departure_datetime || new Date(0).toISOString(),
@@ -79,7 +89,24 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
       requestedAt: req.requested_at,
       seatsAvailableOnTrip: tripData?.seats_available ?? 0,
     };
-  }).filter(trip => trip.tripId !== 'N/A'); // Filter out any malformed entries
+    console.log(`[MyBookedTripsActions]   Mapped BookedTrip object for request ${req.id}:`, JSON.stringify(bookedTrip, null, 2));
+    return bookedTrip;
+  });
+
+  const filteredTrips = mappedTrips.filter(trip => trip.tripId !== 'N/A_TRIP_ID_MISSING');
+  console.log(`[MyBookedTripsActions] Total mapped trips before filter: ${mappedTrips.length}, After filter (valid tripId): ${filteredTrips.length}`);
+
+  if (filteredTrips.length !== mappedTrips.length) {
+    console.warn(`[MyBookedTripsActions] Some trips were filtered out due to missing tripId. Initial count: ${mappedTrips.length}, Final count: ${filteredTrips.length}`);
+    // Log which ones were filtered
+    mappedTrips.forEach(mt => {
+        if (mt.tripId === 'N/A_TRIP_ID_MISSING') {
+            console.warn(`[MyBookedTripsActions]   Trip filtered out: RequestID ${mt.requestId} had missing tripId. Original req.trips:`, requests.find(r => r.id === mt.requestId)?.trips);
+        }
+    });
+  }
+  
+  return filteredTrips;
 }
 
 // Future action: Cancel a pending request
