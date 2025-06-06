@@ -55,7 +55,7 @@ export default function PublishTripPage() {
       seats: 1,
       origin: "",
       destination: "",
-      time: "13:00", // Changed from "10:00"
+      time: "10:00", 
     },
   });
 
@@ -141,7 +141,7 @@ export default function PublishTripPage() {
         description: `Tu viaje de ${data.origin} a ${data.destination} el ${format(data.date, "PPP", { locale: es })} a las ${data.time} ha sido publicado.`,
         variant: "default"
       });
-      form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "13:00" }); // Reset to new default
+      form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "10:00" }); 
       router.push("/dashboard");
     } catch (error: any) {
       console.error("[PublishTripPage] Error publishing trip in catch block:", error);

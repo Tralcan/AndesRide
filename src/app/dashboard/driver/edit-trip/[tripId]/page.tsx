@@ -61,7 +61,7 @@ export default function EditTripPage() {
       seats: 1,
       origin: "",
       destination: "",
-      time: "13:00", // Changed from "10:00" - This is the initial default before data loads
+      time: "10:00", // Initial default before data loads
     },
   });
 
@@ -95,7 +95,7 @@ export default function EditTripPage() {
         origin: data.origin,
         destination: data.destination,
         date: dateObject,
-        time: timeString, // This will be "HH:MM" from existing data
+        time: timeString, 
         seats: data.seats_available,
       });
 
