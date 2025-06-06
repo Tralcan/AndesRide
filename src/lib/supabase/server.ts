@@ -5,31 +5,32 @@ import { createServerClient, type CookieOptions } from '@supabase/ssr';
 import { cookies } from 'next/headers'; // This is fine here because of "use server"
 
 function checkServerEnvVars(context: string) {
-  console.log(`[${context}] Checking Supabase Server Env Vars:`);
-  console.log(`[${context}] NEXT_PUBLIC_SUPABASE_URL:`, process.env.NEXT_PUBLIC_SUPABASE_URL);
-  console.log(`[${context}] NEXT_PUBLIC_SUPABASE_ANON_KEY:`, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY);
+  const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (
-    !process.env.NEXT_PUBLIC_SUPABASE_URL ||
-    !process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
-  ) {
-    // Log the actual values found to help debug if they are empty strings vs undefined
-    const urlFound = process.env.NEXT_PUBLIC_SUPABASE_URL ? "found" : "MISSING or empty";
-    const keyFound = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ? "found" : "MISSING or empty";
+  // These console.logs will appear in the SERVER console
+  console.log(`[${context}] Checking Supabase Server Env Vars:`);
+  console.log(`[${context}] NEXT_PUBLIC_SUPABASE_URL (read as):`, supabaseUrl);
+  console.log(`[${context}] NEXT_PUBLIC_SUPABASE_ANON_KEY (read as):`, supabaseAnonKey);
+
+  if (!supabaseUrl || !supabaseAnonKey) {
+    const urlFound = supabaseUrl ? "found" : "MISSING or empty";
+    const keyFound = supabaseAnonKey ? "found" : "MISSING or empty";
     console.error(`[${context}] Supabase URL is ${urlFound}, Anon Key is ${keyFound}. Both are required.`);
     throw new Error(
-      `Supabase URL or Anon Key is missing in server environment variables for ${context}.`
+      `Supabase URL or Anon Key is missing in server environment variables for ${context}. URL: ${supabaseUrl}, Key: ${supabaseAnonKey}`
     );
   }
+  return { supabaseUrl, supabaseAnonKey };
 }
 
 
 export function createServerActionClient() {
-  checkServerEnvVars("createServerActionClient");
+  const { supabaseUrl, supabaseAnonKey } = checkServerEnvVars("createServerActionClient");
   const cookieStore = cookies();
   return createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    supabaseUrl,
+    supabaseAnonKey,
     {
       cookies: {
         get(name: string) {
@@ -58,10 +59,10 @@ export function createServerActionClient() {
 
 // This function is also for server contexts (Route Handlers)
 export function createRouteHandlerClient(passedCookieStore: ReturnType<typeof cookies>) {
-    checkServerEnvVars("createRouteHandlerClient");
+    const { supabaseUrl, supabaseAnonKey } = checkServerEnvVars("createRouteHandlerClient");
     return createServerClient(
-        process.env.NEXT_PUBLIC_SUPABASE_URL!,
-        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+        supabaseUrl,
+        supabaseAnonKey,
         {
             cookies: {
                 get(name: string) {
