@@ -153,8 +153,7 @@ export default function PublishTripPage() {
         destination: data.destination,
         departure_datetime: departureDateTimeISO,
         seats_available: data.seats,
-        status: 'published', // Assuming a default status
-        // created_at and updated_at are removed, assuming DB trigger handles them
+        // status: 'published', // Campo 'status' eliminado si no existe en la tabla
       };
 
       console.log("[PublishTripPage] Attempting to insert trip:", JSON.stringify(tripToInsert, null, 2));
