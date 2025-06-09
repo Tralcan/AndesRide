@@ -44,7 +44,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
       departure_datetime,
       seats_available,
       driver_id,
-      profiles ( 
+      driver_profile:profiles!driver_id ( 
         full_name,
         avatar_url
       )
@@ -55,7 +55,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     .from('trip_requests')
     .select(selectString)
     .eq('passenger_id', user.id)
-    .in('status', ['pending', 'confirmed']) 
+    .in('status', ['pending', 'confirmed'])
     .order('requested_at', { ascending: false });
 
   if (requestsError) {
@@ -73,16 +73,16 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     console.log(`[MyBookedTripsActions] First raw request object:`, JSON.stringify(requests[0], null, 2));
   }
 
-
   const mappedTrips: BookedTrip[] = requests.map(req => {
-    const tripData = req.trips as any;
+    const tripData = req.trips as any; 
 
     if (!tripData) {
       console.warn(`[MyBookedTripsActions] Request ID ${req.id} (trip_id: ${req.trip_id}) has no associated tripData. RLS on 'trips' might be blocking or data inconsistency.`);
-      return null; 
+      return null;
     }
     
-    const driverProfileData = tripData.profiles as any; 
+    // Use the alias 'driver_profile' used in the selectString
+    const driverProfileData = tripData.driver_profile as any; 
     let driverInfo: DriverProfile | null = null;
 
     if (driverProfileData) {
@@ -94,16 +94,15 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
       const driverIdShort = tripData.driver_id ? tripData.driver_id.substring(0, 6) : 'N/A';
       const initials = tripData.driver_id ? driverIdShort.substring(0,2).toUpperCase() : 'DR';
       driverInfo = {
-        fullName: `Conductor (ID: ${driverIdShort}...)`, // Fallback name
-        avatarUrl: `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`, // Fallback avatar
+        fullName: `Conductor (ID: ${driverIdShort}...)`, 
+        avatarUrl: `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`,
       };
-      console.warn(`[MyBookedTripsActions] Profile data (tripData.profiles) not found for driver_id ${tripData.driver_id} on trip ${tripData.id}. Using fallback driver info.`);
+      console.warn(`[MyBookedTripsActions] Profile data (tripData.driver_profile) not found for driver_id ${tripData.driver_id} on trip ${tripData.id}. Using fallback driver info. Raw tripData.driver_profile:`, JSON.stringify(driverProfileData, null, 2));
     }
     
     console.log(`[MyBookedTripsActions] Processing tripData for request ${req.id}:`, JSON.stringify(tripData, null, 2));
-    console.log(`[MyBookedTripsActions] Driver profile data for request ${req.id}:`, JSON.stringify(driverProfileData, null, 2));
+    console.log(`[MyBookedTripsActions] Driver profile data (from driver_profile alias) for request ${req.id}:`, JSON.stringify(driverProfileData, null, 2));
     console.log(`[MyBookedTripsActions] Resulting driverInfo for request ${req.id}:`, JSON.stringify(driverInfo, null, 2));
-
 
     return {
       requestId: req.id,
@@ -122,7 +121,6 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
   return mappedTrips;
 }
 
-
 export interface CancelRequestResult {
     success: boolean;
     message: string;
@@ -140,7 +138,6 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
     console.log(`[MyBookedTripsActions] User ${user.id} attempting to cancel request ${requestId}`);
 
     try {
-        // Llamada a la función RPC en Supabase
         const { data, error } = await supabase.rpc('cancel_passenger_trip_request', {
             p_request_id: requestId
         });
@@ -150,7 +147,6 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
             return { success: false, message: `Error al cancelar la solicitud: ${error.message}` };
         }
 
-        // La función RPC devuelve una tabla con una fila: {success: boolean, message: text, new_status: text}
         const result = data && data.length > 0 ? data[0] : null;
 
         if (result && result.success) {
