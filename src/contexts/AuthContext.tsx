@@ -255,33 +255,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       console.log("[AuthContext][setRole] Profile upsert successful for role:", newRole);
       
-      // === INICIO DE CAMBIO PARA DIAGNÓSTICO ===
-      // En lugar de llamar a fetchUserProfile, actualizamos el estado localmente y navegamos.
-      
-      // Actualizar el estado local del usuario con el nuevo rol y perfil parcial
-      // (asumiendo que los datos de full_name y avatar_url del upsert son los más recientes)
-      setUser(currentUser => currentUser ? ({ 
-        ...currentUser, 
-        profile: {
-          id: currentUser.id,
-          fullName: dataToUpsert.full_name,
-          avatarUrl: dataToUpsert.avatar_url || null,
-          role: newRole
-        }
-      }) : null);
-      setRoleState(newRole);
-
-      toast({
-        id: `role-set-success-${user.id}`,
-        title: "Rol Establecido (Localmente)",
-        description: `Tu rol ha sido establecido como ${newRole}. Redirigiendo...`,
-        variant: "default",
-      });
-      console.log("[AuthContext][setRole] PUNTO C (Modificado): Rol actualizado localmente. Navegando a /dashboard. Rol actual:", newRole);
-      router.push("/dashboard");
-      // === FIN DE CAMBIO PARA DIAGNÓSTICO ===
-
-      /* Código original que llamaba a fetchUserProfile (ahora comentado para la prueba):
       console.log("[AuthContext][setRole] PUNTO C: Antes del select del perfil post-upsert. User ID:", user.id);
       const profileAfterUpdate = await fetchUserProfile(user); // Se llama a fetchUserProfile aquí
       console.log(`[AuthContext][setRole] PUNTO D: Después del select del perfil post-upsert. Datos del perfil: ${JSON.stringify(profileAfterUpdate, null, 2)}`);
@@ -309,7 +282,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           duration: 9000,
         });
       }
-      */
 
     } catch (error: any) {
       console.error("[AuthContext][setRole] Catch-all error during role setting:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
