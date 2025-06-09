@@ -130,7 +130,9 @@ export default function PublishTripPage() {
       return;
     }
     setIsSubmitting(true);
-    console.log("[PublishTripPage] User ID:", user.id);
+    console.log("[PublishTripPage] User ID from auth context:", user.id);
+    console.log("[PublishTripPage] Role from auth context:", user.profile?.role);
+
 
     try {
       const [hours, minutes] = data.time.split(':').map(Number);
@@ -153,10 +155,9 @@ export default function PublishTripPage() {
         destination: data.destination,
         departure_datetime: departureDateTimeISO,
         seats_available: data.seats,
-        // created_at and updated_at are removed as they should be handled by the trigger or db default
       };
 
-      console.log("[PublishTripPage] Attempting to insert trip:", JSON.stringify(tripToInsert, null, 2));
+      console.log("[PublishTripPage] EXACT DATA TO BE INSERTED:", JSON.stringify(tripToInsert, null, 2));
 
       const { data: insertedData, error } = await supabase.from('trips').insert([tripToInsert]).select();
 
