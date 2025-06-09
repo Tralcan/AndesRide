@@ -31,10 +31,26 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
   }
   console.log('[MyBookedTripsActions] Querying trips for passenger_id:', user.id);
 
-  const selectString =
-    'id, status, requested_at, trip_id, ' +
-    'trips(id, origin, destination, departure_datetime, seats_available, driver_id, ' +
-    'profiles(full_name, avatar_url))';
+  // La estructura de selección anidada es crucial.
+  // trips(...) y profiles(...) deben tener los campos correctos.
+  const selectString = `
+    id, 
+    status, 
+    requested_at, 
+    trip_id,
+    trips (
+      id, 
+      origin, 
+      destination, 
+      departure_datetime, 
+      seats_available, 
+      driver_id,
+      profiles (
+        full_name, 
+        avatar_url
+      )
+    )
+  `;
 
   const { data: requests, error: requestsError } = await supabase
     .from('trip_requests')
@@ -43,70 +59,60 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     .order('requested_at', { ascending: false });
 
   if (requestsError) {
-    console.error('[MyBookedTripsActions] Error fetching passenger booked/requested trips:', requestsError);
-    console.error('[MyBookedTripsActions] Supabase error object:', JSON.stringify(requestsError, null, 2));
+    console.error('[MyBookedTripsActions] Error fetching passenger booked/requested trips:', JSON.stringify(requestsError, null, 2));
     return [];
   }
 
-  if (!requests) {
-    console.log('[MyBookedTripsActions] No requests data structure returned from Supabase (requests is null/undefined).');
+  if (!requests || requests.length === 0) {
+    console.log('[MyBookedTripsActions] No requests found for passenger_id:', user.id);
     return [];
   }
 
-  console.log('[MyBookedTripsActions] Raw requests from Supabase for passenger_id', user.id, ':', JSON.stringify(requests, null, 2));
+  console.log(`[MyBookedTripsActions] Found ${requests.length} requests for passenger ${user.id}. Raw data:`, JSON.stringify(requests.slice(0, 2), null, 2)); // Log solo las primeras 2 para brevedad
 
-  if (requests.length === 0) {
-    console.log('[MyBookedTripsActions] Zero requests found in Supabase query result for this passenger.');
-    return [];
-  }
+  const mappedTrips: BookedTrip[] = requests.map(req => {
+    // req.trips es el objeto anidado de la tabla 'trips'
+    // req.trips.profiles es el objeto anidado de la tabla 'profiles' a través de 'trips'
+    const tripData = req.trips as any; // Cast si la inferencia de tipos de Supabase no es perfecta aquí
+    
+    if (!tripData) {
+      console.warn(`[MyBookedTripsActions] Request ID ${req.id} has no associated tripData (req.trips is null/undefined). This might be due to RLS on 'trips' table or a broken relation.`);
+      return null; // Omitir este viaje si no hay datos del viaje
+    }
 
-  const mappedTrips = requests.map(req => {
-    console.log(`[MyBookedTripsActions] Processing request ID: ${req.id}, status: ${req.status}`);
-    const tripData = req.trips as any; // Cast because Supabase types can be complex here
-    const driverProfile = tripData?.profiles as any;
+    const driverProfileData = tripData.profiles as any; // Cast similar
 
-    console.log(`[MyBookedTripsActions]   Raw associated tripData for request ${req.id}:`, JSON.stringify(tripData, null, 2));
-    console.log(`[MyBookedTripsActions]   Raw associated driverProfile for request ${req.id}:`, JSON.stringify(driverProfile, null, 2));
+    if (!driverProfileData && tripData.driver_id) {
+      console.warn(`[MyBookedTripsActions] Trip ID ${tripData.id} (Request ID ${req.id}) has a driver_id (${tripData.driver_id}) but no associated driverProfileData (tripData.profiles is null/undefined). This might be due to RLS on 'profiles' table.`);
+    }
+    
+    const driverName = driverProfileData?.full_name || 'Conductor Anónimo';
+    let driverAvatar = driverProfileData?.avatar_url;
 
-    let driverAvatar = driverProfile?.avatar_url;
-    const driverName = driverProfile?.full_name || 'Conductor Anónimo';
     if (!driverAvatar || (typeof driverAvatar === 'string' && driverAvatar.trim() === '')) {
         const initials = (driverName.substring(0, 2).toUpperCase() || 'CA');
         driverAvatar = `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`;
     }
 
-    const bookedTrip: BookedTrip = {
+    return {
       requestId: req.id,
-      tripId: tripData?.id || 'N/A_TRIP_ID_MISSING', // Make it more obvious if tripId is missing
-      origin: tripData?.origin || 'N/A',
-      destination: tripData?.destination || 'N/A',
-      departureDateTime: tripData?.departure_datetime || new Date(0).toISOString(),
-      driver: tripData ? {
+      tripId: tripData.id,
+      origin: tripData.origin,
+      destination: tripData.destination,
+      departureDateTime: tripData.departure_datetime,
+      driver: {
         fullName: driverName,
         avatarUrl: driverAvatar,
-      } : null,
+      },
       requestStatus: req.status,
       requestedAt: req.requested_at,
-      seatsAvailableOnTrip: tripData?.seats_available ?? 0,
+      seatsAvailableOnTrip: tripData.seats_available ?? 0,
     };
-    console.log(`[MyBookedTripsActions]   Mapped BookedTrip object for request ${req.id}:`, JSON.stringify(bookedTrip, null, 2));
-    return bookedTrip;
-  });
+  }).filter(trip => trip !== null) as BookedTrip[]; // Filtrar los nulos si tripData no existía
 
-  const filteredTrips = mappedTrips.filter(trip => trip.tripId !== 'N/A_TRIP_ID_MISSING');
-  console.log(`[MyBookedTripsActions] Total mapped trips before filter: ${mappedTrips.length}, After filter (valid tripId): ${filteredTrips.length}`);
-
-  if (filteredTrips.length !== mappedTrips.length) {
-    console.warn(`[MyBookedTripsActions] Some trips were filtered out due to missing tripId. Initial count: ${mappedTrips.length}, Final count: ${filteredTrips.length}`);
-    // Log which ones were filtered
-    mappedTrips.forEach(mt => {
-        if (mt.tripId === 'N/A_TRIP_ID_MISSING') {
-            console.warn(`[MyBookedTripsActions]   Trip filtered out: RequestID ${mt.requestId} had missing tripId. Original req.trips:`, requests.find(r => r.id === mt.requestId)?.trips);
-        }
-    });
-  }
+  console.log(`[MyBookedTripsActions] Mapped ${mappedTrips.length} trips after processing and filtering. First mapped trip (if any):`, mappedTrips.length > 0 ? JSON.stringify(mappedTrips[0], null, 2) : "N/A");
   
-  return filteredTrips;
+  return mappedTrips;
 }
 
 // Future action: Cancel a pending request
