@@ -31,7 +31,7 @@ const TripFormSchema = z.object({
   }),
   time: z.string()
     .transform((val) => {
-      console.log("[Zod Transform EditTrip] Original time value:", val);
+      // console.log("[Zod Transform EditTrip] Original time value:", val);
       const meridiemMatch = val.match(/(\d{1,2}:\d{2})\s?(A\.?M\.?|P\.?M\.?)/i);
       if (meridiemMatch) {
         const timePart = meridiemMatch[1]; 
@@ -47,10 +47,10 @@ const TripFormSchema = z.object({
         const formattedHours = hours.toString().padStart(2, '0');
         const formattedMinutes = minutes.toString().padStart(2, '0');
         const transformed = `${formattedHours}:${formattedMinutes}`;
-        console.log("[Zod Transform EditTrip] Transformed time value:", transformed);
+        // console.log("[Zod Transform EditTrip] Transformed time value:", transformed);
         return transformed;
       }
-      console.log("[Zod Transform EditTrip] No AM/PM transformation, returning original:", val);
+      // console.log("[Zod Transform EditTrip] No AM/PM transformation, returning original:", val);
       return val;
     })
     .pipe(z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato de hora inválido (HH:MM requerido).")),
@@ -113,22 +113,23 @@ export default function EditTripPage() {
          return;
       }
 
-      const departureDateTimeISO = data.departure_datetime; // e.g., "2025-06-27T15:00:00+00:00" (UTC)
+      const departureDateTimeISO_UTC = data.departure_datetime; // e.g., "2025-06-27T15:00:00+00:00" (UTC)
       
       // Convert UTC ISO string to a local Date object for the calendar and time input
-      const localDate = new Date(departureDateTimeISO);
+      const localDateForCalendar = new Date(departureDateTimeISO_UTC);
 
-      const hoursLocal = localDate.getHours().toString().padStart(2, '0');
-      const minutesLocal = localDate.getMinutes().toString().padStart(2, '0');
+      // Extract local time components for the time input field
+      const hoursLocal = localDateForCalendar.getHours().toString().padStart(2, '0');
+      const minutesLocal = localDateForCalendar.getMinutes().toString().padStart(2, '0');
       const timeStringLocal = `${hoursLocal}:${minutesLocal}`; 
       
-      console.log(`[EditTripPage] Fetched trip. Original departure_datetime (UTC): ${departureDateTimeISO}.`);
-      console.log(`[EditTripPage] Date for calendar (local): ${localDate.toISOString()}. Time for form (local): ${timeStringLocal}`);
+      console.log(`[EditTripPage] Fetched trip. Original departure_datetime (UTC): ${departureDateTimeISO_UTC}.`);
+      console.log(`[EditTripPage] Date for calendar (local): ${localDateForCalendar.toISOString()}. Time for form (local HH:MM): ${timeStringLocal}`);
 
       form.reset({
         origin: data.origin,
         destination: data.destination,
-        date: localDate, // Use the local Date object for the calendar
+        date: localDateForCalendar, // Use the local Date object for the calendar
         time: timeStringLocal, // Use the local time string for the time input
         seats: data.seats_available,
       });
@@ -181,7 +182,7 @@ export default function EditTripPage() {
 
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
-    console.log("[EditTripPage] Submitted data (after Zod transform if applicable):", data); 
+    console.log("[EditTripPage] Submitted form data (after Zod transform if applicable):", data); 
     if (!user?.id || !tripId) {
       toast({ title: "Error", description: "Falta información para actualizar.", variant: "destructive" });
       return;
@@ -189,18 +190,26 @@ export default function EditTripPage() {
     setIsSubmitting(true);
 
     try {
-      const year = data.date.getFullYear();
-      const month = (data.date.getMonth() + 1).toString().padStart(2, '0');
-      const day = data.date.getDate().toString().padStart(2, '0');
-      const [hours, minutes] = data.time.split(':');
+      const [hours, minutes] = data.time.split(':').map(Number);
       
-      const departureDateTime = `${year}-${month}-${day}T${hours}:${minutes}:00`;
-      console.log("[EditTripPage] Constructed departureDateTime for Supabase:", departureDateTime);
+      // Create a Date object representing the local date and time selected by the user
+      const localDepartureDate = new Date(
+        data.date.getFullYear(),
+        data.date.getMonth(),
+        data.date.getDate(),
+        hours,
+        minutes
+      );
+      console.log("[EditTripPage] Constructed localDepartureDate object:", localDepartureDate.toString());
+
+      // Convert the local Date object to an ISO string in UTC
+      const departureDateTimeISO = localDepartureDate.toISOString();
+      console.log("[EditTripPage] Calculated departureDateTimeISO (UTC) for Supabase:", departureDateTimeISO);
 
       const tripToUpdate = {
         origin: data.origin,
         destination: data.destination,
-        departure_datetime: departureDateTime, // This local time string will be converted to UTC by Supabase
+        departure_datetime: departureDateTimeISO, // Send UTC ISO string to Supabase
         seats_available: data.seats,
         updated_at: new Date().toISOString(),
       };
@@ -276,7 +285,7 @@ export default function EditTripPage() {
             </Button>
         </div>
         <CardDescription>
-          Modifica los detalles de tu viaje y guarda los cambios. Las horas se muestran en tu zona horaria local.
+          Modifica los detalles de tu viaje y guarda los cambios. Las horas se ingresan y muestran en tu zona horaria local.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -400,6 +409,7 @@ export default function EditTripPage() {
                     <FormControl>
                       <Input type="time" {...field} className="w-full" disabled={isSubmitting} />
                     </FormControl>
+                    <FormDescription>Ingresa la hora en tu zona horaria local.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}

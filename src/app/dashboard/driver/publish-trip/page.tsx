@@ -30,29 +30,26 @@ const TripFormSchema = z.object({
   }),
   time: z.string()
     .transform((val) => {
-      console.log("[Zod Transform PublishTrip] Original time value:", val);
-      // Regex mejorada para capturar AM/PM con o sin puntos, insensible a mayúsculas/minúsculas
+      // console.log("[Zod Transform PublishTrip] Original time value:", val);
       const meridiemMatch = val.match(/(\d{1,2}:\d{2})\s?(A\.?M\.?|P\.?M\.?)/i);
       if (meridiemMatch) {
-        const timePart = meridiemMatch[1]; // ej: "10:00"
-        const meridiem = meridiemMatch[2].toUpperCase().replace(/\./g, ""); // ej: "AM" o "PM" (sin puntos)
+        const timePart = meridiemMatch[1]; 
+        const meridiem = meridiemMatch[2].toUpperCase().replace(/\./g, ""); 
         let [hours, minutes] = timePart.split(':').map(Number);
 
         if (meridiem === 'PM' && hours < 12) {
           hours += 12;
-        } else if (meridiem === 'AM' && hours === 12) { // 12 AM (medianoche) es 00 horas
+        } else if (meridiem === 'AM' && hours === 12) { 
           hours = 0;
         }
-        // No se necesita ajuste para 12 PM (mediodía), ya es 12 en formato 24h
-        // No se necesita ajuste para AM (1-11 AM), ya son correctos en formato 24h
-
+        
         const formattedHours = hours.toString().padStart(2, '0');
         const formattedMinutes = minutes.toString().padStart(2, '0');
         const transformed = `${formattedHours}:${formattedMinutes}`;
-        console.log("[Zod Transform PublishTrip] Transformed time value:", transformed);
+        // console.log("[Zod Transform PublishTrip] Transformed time value:", transformed);
         return transformed;
       }
-      console.log("[Zod Transform PublishTrip] No AM/PM transformation, returning original:", val);
+      // console.log("[Zod Transform PublishTrip] No AM/PM transformation, returning original:", val);
       return val; 
     })
     .pipe(z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato de hora inválido (HH:MM requerido).")),
@@ -122,7 +119,7 @@ export default function PublishTripPage() {
   }, [toast, supabase]);
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
-    console.log("[PublishTripPage] Submitted data (after Zod transform if applicable):", data); 
+    console.log("[PublishTripPage] Submitted form data (after Zod transform if applicable):", data); 
     if (!user?.id) {
       toast({
         title: "Error de Autenticación",
@@ -136,20 +133,27 @@ export default function PublishTripPage() {
     console.log("[PublishTripPage] User ID:", user.id);
 
     try {
-      const year = data.date.getFullYear();
-      const month = (data.date.getMonth() + 1).toString().padStart(2, '0');
-      const day = data.date.getDate().toString().padStart(2, '0');
-      // data.time ya debería estar en formato HH:MM gracias a la transformación de Zod
-      const [hours, minutes] = data.time.split(':'); 
+      const [hours, minutes] = data.time.split(':').map(Number);
       
-      const departureDateTime = `${year}-${month}-${day}T${hours}:${minutes}:00`;
-      console.log("[PublishTripPage] Calculated departureDateTime:", departureDateTime);
+      // Create a Date object representing the local date and time selected by the user
+      const localDepartureDate = new Date(
+        data.date.getFullYear(),
+        data.date.getMonth(),
+        data.date.getDate(),
+        hours,
+        minutes
+      );
+      console.log("[PublishTripPage] Constructed localDepartureDate object:", localDepartureDate.toString());
+
+      // Convert the local Date object to an ISO string in UTC
+      const departureDateTimeISO = localDepartureDate.toISOString();
+      console.log("[PublishTripPage] Calculated departureDateTimeISO (UTC) for Supabase:", departureDateTimeISO);
 
       const tripToInsert = {
         driver_id: user.id,
         origin: data.origin,
         destination: data.destination,
-        departure_datetime: departureDateTime,
+        departure_datetime: departureDateTimeISO, // Send UTC ISO string to Supabase
         seats_available: data.seats,
       };
 
@@ -166,7 +170,7 @@ export default function PublishTripPage() {
 
       toast({
         title: "¡Viaje Publicado!",
-        description: `Tu viaje de ${data.origin} a ${data.destination} el ${format(data.date, "PPP", { locale: es })} a las ${data.time} ha sido publicado.`,
+        description: `Tu viaje de ${data.origin} a ${data.destination} el ${format(data.date, "PPP", { locale: es })} a las ${data.time} (hora local) ha sido publicado.`,
         variant: "default"
       });
       form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "10:00" }); 
@@ -191,7 +195,7 @@ export default function PublishTripPage() {
           <CardTitle className="text-2xl font-bold">Publicar un Nuevo Viaje</CardTitle>
         </div>
         <CardDescription>
-          Completa los detalles a continuación para ofrecer un viaje a otros viajeros.
+          Completa los detalles a continuación para ofrecer un viaje a otros viajeros. Las horas se ingresan en tu zona horaria local.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -321,11 +325,12 @@ export default function PublishTripPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
-                      <Clock className="h-4 w-4 text-muted-foreground" /> Hora del Viaje
+                      <Clock className="h-4 w-4 text-muted-foreground" /> Hora del Viaje (Local)
                     </FormLabel>
                     <FormControl>
                       <Input type="time" {...field} className="w-full" />
                     </FormControl>
+                    <FormDescription>Ingresa la hora en tu zona horaria local.</FormDescription>
                     <FormMessage />
                   </FormItem>
                 )}
@@ -359,5 +364,4 @@ export default function PublishTripPage() {
     </Card>
   );
 }
-
     
