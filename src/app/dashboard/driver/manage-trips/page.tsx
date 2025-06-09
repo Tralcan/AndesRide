@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
 import { ListChecks, Trash2, Edit3, CalendarDays, Users, MapPin, ArrowRight, Loader2, Frown } from "lucide-react";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns"; // Import parseISO
 import { es } from "date-fns/locale/es";
 import Link from "next/link";
 
@@ -36,14 +36,22 @@ interface Trip {
 
 const safeFormatDate = (dateInput: string | Date, formatString: string, options?: { locale?: Locale }): string => {
   try {
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    let date: Date;
+    if (typeof dateInput === 'string') {
+      date = parseISO(dateInput); // Use parseISO for strings
+    } else {
+      date = dateInput; // Assume it's already a Date object
+    }
+    // Log para depuración
+    console.log(`[safeFormatDate ManageTrips] Input: ${typeof dateInput === 'string' ? dateInput : dateInput.toISOString()}, Parsed/Original Date obj (local for toString): ${date.toString()}, IsNaN: ${isNaN(date.getTime())}`);
+
     if (isNaN(date.getTime())) {
-      console.warn(`[safeFormatDate] Invalid date input encountered: ${dateInput}`);
+      console.warn(`[safeFormatDate ManageTrips] Invalid date after parsing/input: ${dateInput}`);
       return "Fecha inválida";
     }
     return format(date, formatString, options);
   } catch (e) {
-    console.error(`[safeFormatDate] Error formatting date: ${dateInput}`, e);
+    console.error(`[safeFormatDate ManageTrips] Error formatting date: ${dateInput}`, e);
     return "Error de fecha";
   }
 };
@@ -180,8 +188,8 @@ export default function ManageTripsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {trips.map((trip) => {
-            const departureDate = new Date(trip.departure_datetime);
-            const formattedDepartureDateTime = safeFormatDate(departureDate, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+            // La cadena ISO trip.departure_datetime se pasa directamente a safeFormatDate
+            const formattedDepartureDateTime = safeFormatDate(trip.departure_datetime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
             const formattedCreatedAt = safeFormatDate(trip.created_at, "dd/MM/yy HH:mm", { locale: es });
 
             return (
@@ -232,7 +240,7 @@ export default function ManageTripsPage() {
               programado para 
               <span className="font-semibold"> {
                 tripToDelete 
-                ? safeFormatDate(new Date(tripToDelete.departure_datetime), "dd MMM, yyyy HH:mm", { locale: es })
+                ? safeFormatDate(tripToDelete.departure_datetime, "dd MMM, yyyy HH:mm", { locale: es })
                 : ''
               } </span>
               será eliminado permanentemente.

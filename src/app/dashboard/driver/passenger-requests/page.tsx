@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns"; // Import parseISO
 import { es } from "date-fns/locale/es";
 import type { Locale } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,13 +18,22 @@ import { Users, CalendarDays, MapPin, ArrowRight, CheckCircle, XCircle, UserChec
 
 const safeFormatDate = (dateInput: string | Date, formatString: string, options?: { locale?: Locale }): string => {
   try {
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    let date: Date;
+    if (typeof dateInput === 'string') {
+      date = parseISO(dateInput); // Use parseISO for strings
+    } else {
+      date = dateInput; // Assume it's already a Date object
+    }
+    // Log para depuración
+    console.log(`[safeFormatDate PassengerRequests] Input: ${typeof dateInput === 'string' ? dateInput : dateInput.toISOString()}, Parsed/Original Date obj (local for toString): ${date.toString()}, IsNaN: ${isNaN(date.getTime())}`);
+    
     if (isNaN(date.getTime())) {
+      console.warn(`[safeFormatDate PassengerRequests] Invalid date after parsing/input: ${dateInput}`);
       return "Fecha inválida";
     }
     return format(date, formatString, options);
   } catch (e) {
-    console.error(`Error formatting date: ${dateInput}`, e);
+    console.error(`[safeFormatDate PassengerRequests] Error formatting date: ${dateInput}`, e);
     return "Error de fecha";
   }
 };
@@ -169,8 +178,8 @@ export default function PassengerRequestsPage() {
       ) : (
         <div className="space-y-6">
           {tripsWithRequests.map((trip) => {
-            const departureDate = new Date(trip.departureDateTime);
-            const formattedDepartureDateTime = safeFormatDate(departureDate, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+            // La cadena ISO trip.departureDateTime se pasa directamente a safeFormatDate
+            const formattedDepartureDateTime = safeFormatDate(trip.departureDateTime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
 
             return (
               <Card key={trip.tripId} className="shadow-lg">
@@ -196,6 +205,7 @@ export default function PassengerRequestsPage() {
                     trip.requests.map((request) => {
                       const passengerName = request.passenger?.fullName || "Pasajero Anónimo";
                       const passengerAvatar = request.passenger?.avatarUrl || `https://placehold.co/40x40.png?text=${getPassengerInitials(passengerName)}`;
+                       // La cadena ISO request.requestedAt se pasa directamente a safeFormatDate
                       const formattedRequestedAt = safeFormatDate(request.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
 
                       return (

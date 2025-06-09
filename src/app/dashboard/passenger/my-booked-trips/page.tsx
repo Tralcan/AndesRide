@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns"; // Import parseISO
 import { es } from "date-fns/locale/es";
 import type { Locale } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
@@ -18,14 +18,22 @@ import { MapPin, CalendarDays, UserCircle, CheckCircle, Clock, XCircle, AlertTri
 
 const safeFormatDate = (dateInput: string | Date, formatString: string, options?: { locale?: Locale }): string => {
   try {
-    const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
+    let date: Date;
+    if (typeof dateInput === 'string') {
+      date = parseISO(dateInput); // Use parseISO for strings
+    } else {
+      date = dateInput; // Assume it's already a Date object
+    }
+    // Log para depuración
+    console.log(`[safeFormatDate MyBookedTrips] Input: ${typeof dateInput === 'string' ? dateInput : dateInput.toISOString()}, Parsed/Original Date obj (local for toString): ${date.toString()}, IsNaN: ${isNaN(date.getTime())}`);
+    
     if (isNaN(date.getTime())) {
-      console.warn(`[safeFormatDate] Invalid date input: ${dateInput}. Returning 'Fecha inválida'`);
+      console.warn(`[safeFormatDate MyBookedTrips] Invalid date after parsing/input: ${dateInput}`);
       return "Fecha inválida";
     }
     return format(date, formatString, options);
   } catch (e) {
-    console.error(`Error formatting date: ${dateInput}`, e);
+    console.error(`[safeFormatDate MyBookedTrips] Error formatting date: ${dateInput}`, e);
     return "Error de fecha";
   }
 };
@@ -181,13 +189,14 @@ export default function MyBookedTripsPage() {
       ) : (
         <div className="space-y-6">
           {bookedTrips.map((trip) => {
-            console.log(`[MyBookedTripsPage] CLIENT: Processing trip for render, request ID: ${trip.requestId}`);
+            console.log(`[MyBookedTripsPage] CLIENT: Rendering trip for request ID: ${trip.requestId}`);
             console.log(`[MyBookedTripsPage] CLIENT: trip.driver object:`, JSON.stringify(trip.driver, null, 2));
             console.log(`[MyBookedTripsPage] CLIENT: trip.driver?.fullName:`, trip.driver?.fullName);
             console.log(`[MyBookedTripsPage] CLIENT: trip.driver?.avatarUrl:`, trip.driver?.avatarUrl);
-
-            const departureDate = new Date(trip.departureDateTime);
-            const formattedDepartureDateTime = safeFormatDate(departureDate, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+            
+            // La cadena ISO trip.departureDateTime se pasa directamente a safeFormatDate
+            const formattedDepartureDateTime = safeFormatDate(trip.departureDateTime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+            // La cadena ISO trip.requestedAt se pasa directamente a safeFormatDate
             const formattedRequestedAt = safeFormatDate(trip.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
             
             const driverNameForDisplay = trip.driver?.fullName || "Conductor Anónimo";
@@ -198,7 +207,14 @@ export default function MyBookedTripsPage() {
             console.log(`[MyBookedTripsPage] CLIENT: driverNameForDisplay:`, driverNameForDisplay);
             console.log(`[MyBookedTripsPage] CLIENT: driverAvatarSrc resolved to:`, driverAvatarSrc);
             
-            const isTripInFuture = departureDate > new Date();
+            // Determinar si el viaje es futuro para habilitar la cancelación
+            let isTripInFuture = false;
+            try {
+                const departureDate = parseISO(trip.departureDateTime);
+                isTripInFuture = departureDate > new Date();
+            } catch (e) {
+                console.error("Error parsing trip.departureDateTime for future check:", trip.departureDateTime, e);
+            }
             const canCancel = (trip.requestStatus === 'pending' || trip.requestStatus === 'confirmed') && isTripInFuture;
 
             return (
