@@ -32,7 +32,8 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
   }
   console.log('[MyBookedTripsActions] Querying trips for passenger_id:', user.id);
 
-  // Solicitamos los perfiles del conductor directamente a través de la FK driver_id en trips
+  // Simplificamos la consulta: NO intentamos traer el perfil del conductor anidado aquí.
+  // Solo traemos driver_id desde trips.
   const selectString = `
     id,
     status,
@@ -44,11 +45,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
       destination,
       departure_datetime,
       seats_available,
-      driver_id,
-      driver_profile:profiles ( 
-        full_name,
-        avatar_url
-      )
+      driver_id 
     )
   `;
 
@@ -69,25 +66,26 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     return [];
   }
 
-  console.log(`[MyBookedTripsActions] Found ${requests.length} "pending" or "confirmed" requests for passenger ${user.id}.`);
-  
+  console.log(`[MyBookedTripsActions] Found ${requests.length} "pending" or "confirmed" requests for passenger ${user.id}. Logging first raw request (if any):`);
+  if (requests.length > 0) {
+    console.log(`[MyBookedTripsActions] Raw request 1:`, JSON.stringify(requests[0], null, 2));
+  }
+
+
   const mappedTrips: BookedTrip[] = requests.map(req => {
     const tripData = req.trips as any;
 
     if (!tripData) {
-      console.warn(`[MyBookedTripsActions] Request ID ${req.id} (trip_id: ${req.trip_id}) has no associated tripData. RLS on 'trips' might be blocking.`);
+      console.warn(`[MyBookedTripsActions] Request ID ${req.id} (trip_id: ${req.trip_id}) has no associated tripData (req.trips is null/undefined). RLS on 'trips' might be blocking.`);
       return null;
     }
     
-    // Los datos del perfil del conductor ahora vienen de tripData.driver_profile
-    const driverProfileData = tripData.driver_profile as any;
-    const driverName = driverProfileData?.full_name || (tripData.driver_id ? `Conductor (ID: ${tripData.driver_id.substring(0,6)}...)` : 'Conductor Anónimo');
-    let driverAvatar = driverProfileData?.avatar_url;
+    console.log(`[MyBookedTripsActions] Processing tripData for request ${req.id}:`, JSON.stringify(tripData, null, 2));
 
-    if (!driverAvatar || (typeof driverAvatar === 'string' && driverAvatar.trim() === '')) {
-        const initials = (driverName.substring(0, 2).toUpperCase() || 'CA');
-        driverAvatar = `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`;
-    }
+    // Creamos un DriverProfile placeholder ya que no estamos fetcheando los datos del conductor
+    const driverName = tripData.driver_id ? `Conductor (ID: ${tripData.driver_id.substring(0,6)}...)` : 'Conductor Anónimo';
+    const initials = (driverName.substring(0, 2).toUpperCase() || 'CA');
+    const driverAvatar = `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`;
 
     return {
       requestId: req.id,
@@ -95,7 +93,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
       origin: tripData.origin,
       destination: tripData.destination,
       departureDateTime: tripData.departure_datetime,
-      driver: {
+      driver: { // Placeholder driver info
         fullName: driverName,
         avatarUrl: driverAvatar,
       },
@@ -105,7 +103,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     };
   }).filter(trip => trip !== null) as BookedTrip[];
 
-  console.log(`[MyBookedTripsActions] Mapped ${mappedTrips.length} trips after processing.`);
+  console.log(`[MyBookedTripsActions] Mapped ${mappedTrips.length} trips after processing. First mapped trip (if any):`, mappedTrips.length > 0 ? JSON.stringify(mappedTrips[0], null, 2) : "N/A");
   return mappedTrips;
 }
 
@@ -137,12 +135,11 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
             return { success: false, message: `Error al cancelar la solicitud: ${error.message}` };
         }
 
-        // La función RPC devuelve un array con un objeto, así que tomamos el primero.
         const result = data && data.length > 0 ? data[0] : null;
 
         if (result && result.success) {
             console.log(`[MyBookedTripsActions] Request ${requestId} cancelled successfully. New status: ${result.new_status}`);
-            revalidatePath('/dashboard/passenger/my-booked-trips'); // Revalidar la página para refrescar la lista
+            revalidatePath('/dashboard/passenger/my-booked-trips');
             return { success: true, message: result.message, newStatus: result.new_status };
         } else {
             console.warn(`[MyBookedTripsActions] RPC call to cancel request ${requestId} did not succeed or returned unexpected data. Result:`, result);
@@ -153,3 +150,4 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
         return { success: false, message: `Excepción: ${e.message}` };
     }
 }
+
