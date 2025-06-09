@@ -47,8 +47,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const fetchUserProfile = useCallback(async (supabaseUser: SupabaseUser): Promise<UserProfile | null> => {
     console.log("[AuthContext][fetchUserProfile] Fetching profile for user:", supabaseUser.id);
-    // Asegurarse de que RLS esté activo en 'profiles' con al menos la política:
-    // CREATE POLICY "Profiles: Users can read their own profile" ON public.profiles FOR SELECT TO authenticated USING (auth.uid() = id);
     const { data, error } = await supabase
       .from("profiles")
       .select("id, full_name, avatar_url, role")
@@ -62,10 +60,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error.message.toLowerCase().includes("infinite recursion detected")) {
         title = "Error Crítico de RLS";
         description = "Se detectó una recursión infinita en las políticas de seguridad (RLS). Por favor, revisa las políticas.";
-      } else if (error.code === 'PGRST116') { // "Actual row violates check constraint for RLS"
+      } else if (error.code === 'PGRST116') { 
          console.warn("[AuthContext][fetchUserProfile] No profile found (PGRST116) or RLS check failed for user:", supabaseUser.id);
-         // No mostrar toast aquí, podría ser normal o un problema de RLS SELECT en profiles.
-         // La consola ya muestra el error.
          return null;
       }
        toast({ title, description, variant: "destructive", duration: 7000 });
@@ -99,7 +95,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setSession(currentSession);
 
         if (currentSession?.user) {
-          // Mantiene el perfil anterior si existe, mientras se busca el nuevo
           setUser(prevUser => ({ ...currentSession.user, profile: prevUser?.profile || null }));
           
           if (isLoading && isMounted) {
@@ -120,10 +115,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRoleState(profile.role || null);
             console.log('[AuthContext][onAuthStateChange] User profile and role updated after fetch. Role:', profile.role);
           } else {
-            // Si no se encuentra el perfil o hay un error, el rol se queda como estaba o null
-            // No necesariamente resetear el rol aquí si ya se tenía uno, 
-            // podría ser un fallo temporal de lectura del perfil.
-            // setRoleState(null); // Comentado para ser menos agresivo
             console.log('[AuthContext][onAuthStateChange] No profile found or error during fetch. Current role state:', role);
           }
 
@@ -150,7 +141,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
              setIsLoading(false);
           }
         }
-        // Si hay sesión inicial, onAuthStateChange se encargará de setIsLoading(false) después de la primera carga de perfil
       }
     })();
 
@@ -159,7 +149,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("[AuthContext][useEffect] Unmounting. Unsubscribing from auth changes.");
       authListener?.subscription.unsubscribe();
     };
-  }, [fetchUserProfile, supabase, isLoading, role]); // Añadido role a las dependencias por si setRoleState(null) se descomenta
+  }, [fetchUserProfile, supabase, isLoading, role]);
 
 
   const login = async () => {
@@ -193,11 +183,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         variant: "destructive",
       });
     } else {
-      // Asegurar que el estado local se limpia inmediatamente tras el logout exitoso
       setUser(null);
       setRoleState(null);
       setSession(null);
-      router.push('/'); // Redirigir al login
+      router.push('/'); 
     }
     return { error };
   };
@@ -205,7 +194,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const setRoleAndUpdateProfile = async (newRole: Role) => {
     console.log(`[AuthContext][setRole] Attempting to set role to ${newRole} for user ${user?.id}.`);
     if (!user?.id || !newRole) {
-      console.error("[AuthContext][setRole] User or newRole is invalid. Cannot proceed. UserID:", user?.id, "NewRole:", newRole);
+      console.error("[AuthContext][setRole] User or newRole is invalid. UserID:", user?.id, "NewRole:", newRole);
       toast({ title: "Error de Parámetros", description: "Usuario no autenticado o rol no válido.", variant: "destructive" });
       return;
     }
@@ -255,33 +244,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
       console.log("[AuthContext][setRole] Profile upsert successful for role:", newRole);
       
-      console.log("[AuthContext][setRole] PUNTO C: Antes del select del perfil post-upsert. User ID:", user.id);
-      const profileAfterUpdate = await fetchUserProfile(user); // Se llama a fetchUserProfile aquí
-      console.log(`[AuthContext][setRole] PUNTO D: Después del select del perfil post-upsert. Datos del perfil: ${JSON.stringify(profileAfterUpdate, null, 2)}`);
+      // --- MODIFICACIÓN CLAVE: No llamar a fetchUserProfile aquí ---
+      // En su lugar, actualizamos el estado local y navegamos.
+      // onAuthStateChange se encargará de la sincronización completa del perfil.
+      
+      // Actualizar el rol localmente para reflejar el cambio inmediatamente en la UI si es necesario
+      // y en el estado del AuthContext que se usa para la redirección.
+      setRoleState(newRole);
+      // Actualizar el perfil del usuario en el estado también si es posible,
+      // aunque onAuthStateChange lo hará más robustamente.
+      // Esto es más para la consistencia inmediata del estado local.
+      setUser(currentUser => {
+        if (currentUser) {
+          const updatedProfile: UserProfile = {
+            ...(currentUser.profile || { id: currentUser.id, fullName: null, avatarUrl: null }), // Mantener datos existentes o crear base
+            role: newRole, // Establecer el nuevo rol
+            fullName: userFullName || currentUser.profile?.fullName || "Usuario Anónimo",
+            avatarUrl: userAvatarUrl || currentUser.profile?.avatarUrl
+          };
+          return { ...currentUser, profile: updatedProfile };
+        }
+        return null;
+      });
 
-      if (profileAfterUpdate) {
-        console.log("[AuthContext][setRole] Profile data after upsert/select:", JSON.stringify(profileAfterUpdate, null, 2));
-        setUser(currentUser => currentUser ? ({ ...currentUser, profile: profileAfterUpdate }) : null);
-        setRoleState(profileAfterUpdate.role); 
-
-        toast({
-          id: `role-set-success-${user.id}`,
-          title: "Rol Establecido Correctamente",
-          description: `Tu rol ha sido establecido como ${profileAfterUpdate.role}. Redirigiendo...`,
-          variant: "default",
-        });
-        console.log("[AuthContext][setRole] PUNTO E: Navegando a /dashboard. Rol actual:", profileAfterUpdate.role);
-        router.push("/dashboard");
-      } else {
-        console.error("[AuthContext][setRole] No profile data returned after upsert/select, but no explicit select error. This is unexpected.");
-        toast({
-          id: `error-fetch-after-upsert-${user.id}`,
-          title: "Error Inesperado de Perfil",
-          description: "No se recibieron datos del perfil después de guardar el rol. Esto puede indicar un problema con RLS SELECT en 'profiles'.",
-          variant: "destructive",
-          duration: 9000,
-        });
-      }
+      toast({
+        id: `role-set-success-${user.id}`,
+        title: "Rol Establecido Localmente",
+        description: `Tu rol ha sido configurado como ${newRole}. Redirigiendo... La sincronización completa ocurrirá en segundo plano.`,
+        variant: "default",
+      });
+      console.log("[AuthContext][setRole] PUNTO E (modificado): Rol establecido localmente. Navegando a /dashboard. Nuevo rol local:", newRole);
+      router.push("/dashboard");
+      // --- FIN DE LA MODIFICACIÓN CLAVE ---
 
     } catch (error: any) {
       console.error("[AuthContext][setRole] Catch-all error during role setting:", JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
