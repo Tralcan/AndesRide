@@ -20,6 +20,7 @@ const safeFormatDate = (dateInput: string | Date, formatString: string, options?
   try {
     const date = typeof dateInput === 'string' ? new Date(dateInput) : dateInput;
     if (isNaN(date.getTime())) {
+      console.warn(`[safeFormatDate] Invalid date input: ${dateInput}. Returning 'Fecha inválida'`);
       return "Fecha inválida";
     }
     return format(date, formatString, options);
@@ -30,12 +31,16 @@ const safeFormatDate = (dateInput: string | Date, formatString: string, options?
 };
 
 const getInitials = (name?: string | null) => {
-    if (!name || name.trim() === '' || name.includes('@')) {
+    if (!name || name.trim() === '' || name.includes('@') || name.startsWith('Conductor (ID:')) {
         const emailPart = name?.split('@')[0];
+        const idPartMatch = name?.match(/Conductor \(ID: (.*?)\.\.\.\)/);
+        if (idPartMatch && idPartMatch[1] && idPartMatch[1].trim() !== '') {
+          return idPartMatch[1].substring(0,2).toUpperCase();
+        }
         if (emailPart && emailPart.trim() !== '') {
             return emailPart.substring(0, Math.min(2, emailPart.length)).toUpperCase();
         }
-        return "??";
+        return "DR"; // Default for Driver
     }
     const names = name.split(" ").filter(n => n.trim() !== '');
     if (names.length === 0) return "??";
@@ -109,7 +114,6 @@ export default function MyBookedTripsPage() {
             variant: result.success ? "default" : "destructive"
         });
         if (result.success) {
-            // Refrescar la lista de viajes para reflejar el cambio de estado
             fetchBookedTrips(); 
         }
     } catch (e:any) {
@@ -156,7 +160,7 @@ export default function MyBookedTripsPage() {
         </div>
       </div>
       <CardDescription>
-        Aquí puedes ver el estado de los viajes que has solicitado y que están pendientes o confirmados.
+        Aquí puedes ver el estado de los viajes que has solicitado y que están pendientes o confirmados. Las horas se muestran en tu zona horaria local.
       </CardDescription>
 
       {bookedTrips.length === 0 ? (
@@ -175,19 +179,17 @@ export default function MyBookedTripsPage() {
       ) : (
         <div className="space-y-6">
           {bookedTrips.map((trip) => {
-            const originalUtcDate = new Date(trip.departureDateTime);
-            const year = originalUtcDate.getUTCFullYear();
-            const month = originalUtcDate.getUTCMonth();
-            const day = originalUtcDate.getUTCDate();
-            const hours = originalUtcDate.getUTCHours();
-            const minutes = originalUtcDate.getUTCMinutes();
-            const dateForDisplay = new Date(Date.UTC(year, month, day, hours, minutes)); // Mantener como UTC para formatear
-
-            const formattedDepartureDateTime = safeFormatDate(dateForDisplay, "eeee dd MMM, yyyy 'a las' HH:mm 'UTC'", { locale: es });
+            // Create a Date object directly from the ISO string.
+            // `format` will use the browser's local timezone.
+            const departureDate = new Date(trip.departureDateTime);
+            const formattedDepartureDateTime = safeFormatDate(departureDate, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
             const formattedRequestedAt = safeFormatDate(trip.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
-            const driverAvatarSrc = trip.driver?.avatarUrl || `https://placehold.co/40x40.png?text=${getInitials(trip.driver?.fullName)}`;
             
-            const isTripInFuture = originalUtcDate > new Date();
+            const driverAvatarSrc = trip.driver?.avatarUrl && trip.driver.avatarUrl.trim() !== ''
+              ? trip.driver.avatarUrl
+              : `https://placehold.co/40x40.png?text=${getInitials(trip.driver?.fullName)}`;
+            
+            const isTripInFuture = departureDate > new Date();
             const canCancel = (trip.requestStatus === 'pending' || trip.requestStatus === 'confirmed') && isTripInFuture;
 
             return (

@@ -113,22 +113,23 @@ export default function EditTripPage() {
          return;
       }
 
-      const isoString = data.departure_datetime; // e.g., "2025-06-27T10:00:00+00"
-      const dateObjectForCalendar = new Date(isoString); // For the calendar picker
+      const departureDateTimeISO = data.departure_datetime; // e.g., "2025-06-27T15:00:00+00:00" (UTC)
+      
+      // Convert UTC ISO string to a local Date object for the calendar and time input
+      const localDate = new Date(departureDateTimeISO);
 
-      // Get UTC hours and minutes to display the time as it was stored (e.g. 10:00 if T10:00:00Z)
-      const dateForUtcParts = new Date(isoString);
-      const hoursUtc = dateForUtcParts.getUTCHours().toString().padStart(2, '0');
-      const minutesUtc = dateForUtcParts.getUTCMinutes().toString().padStart(2, '0');
-      const timeString = `${hoursUtc}:${minutesUtc}`; 
-      console.log(`[EditTripPage] Fetched trip. Original departure_datetime: ${isoString}. Date for calendar: ${dateObjectForCalendar.toISOString()}. Time for form (from UTC parts): ${timeString}`);
-
+      const hoursLocal = localDate.getHours().toString().padStart(2, '0');
+      const minutesLocal = localDate.getMinutes().toString().padStart(2, '0');
+      const timeStringLocal = `${hoursLocal}:${minutesLocal}`; 
+      
+      console.log(`[EditTripPage] Fetched trip. Original departure_datetime (UTC): ${departureDateTimeISO}.`);
+      console.log(`[EditTripPage] Date for calendar (local): ${localDate.toISOString()}. Time for form (local): ${timeStringLocal}`);
 
       form.reset({
         origin: data.origin,
         destination: data.destination,
-        date: dateObjectForCalendar, // Use the date object that reflects local day for the calendar
-        time: timeString,    // Use the time string extracted from UTC parts
+        date: localDate, // Use the local Date object for the calendar
+        time: timeStringLocal, // Use the local time string for the time input
         seats: data.seats_available,
       });
 
@@ -188,23 +189,18 @@ export default function EditTripPage() {
     setIsSubmitting(true);
 
     try {
-      // data.date is a Date object from the calendar, representing local date
-      // data.time is "HH:MM" (24h) from the form, representing local time
       const year = data.date.getFullYear();
       const month = (data.date.getMonth() + 1).toString().padStart(2, '0');
       const day = data.date.getDate().toString().padStart(2, '0');
       const [hours, minutes] = data.time.split(':');
       
-      // This departureDateTime string is in "local" time based on form inputs
-      // Supabase client will handle converting this to UTC if the column is TIMESTAMPTZ,
-      // usually based on the session's timezone (often defaults to UTC for server operations).
       const departureDateTime = `${year}-${month}-${day}T${hours}:${minutes}:00`;
       console.log("[EditTripPage] Constructed departureDateTime for Supabase:", departureDateTime);
 
       const tripToUpdate = {
         origin: data.origin,
         destination: data.destination,
-        departure_datetime: departureDateTime,
+        departure_datetime: departureDateTime, // This local time string will be converted to UTC by Supabase
         seats_available: data.seats,
         updated_at: new Date().toISOString(),
       };
@@ -280,7 +276,7 @@ export default function EditTripPage() {
             </Button>
         </div>
         <CardDescription>
-          Modifica los detalles de tu viaje y guarda los cambios.
+          Modifica los detalles de tu viaje y guarda los cambios. Las horas se muestran en tu zona horaria local.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -399,7 +395,7 @@ export default function EditTripPage() {
                 render={({ field }) => (
                   <FormItem>
                     <FormLabel className="flex items-center gap-1">
-                      <Clock className="h-4 w-4 text-muted-foreground" /> Hora del Viaje
+                      <Clock className="h-4 w-4 text-muted-foreground" /> Hora del Viaje (Local)
                     </FormLabel>
                     <FormControl>
                       <Input type="time" {...field} className="w-full" disabled={isSubmitting} />

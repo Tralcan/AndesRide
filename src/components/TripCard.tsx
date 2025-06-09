@@ -1,3 +1,4 @@
+
 // src/components/TripCard.tsx
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ export interface Trip {
   driverAvatar: string | null; 
   origin: string;
   destination: string;
-  date: Date; 
+  date: Date; // This is expected to be a Date object, already converted from ISO if needed
   availableSeats: number;
   price?: number; 
 }
@@ -30,18 +31,9 @@ export function TripCard({ trip, onRequestRide, isRequesting = false }: TripCard
   const noSeatsAvailable = trip.availableSeats <= 0;
 
   let formattedDepartureDateTime = "Fecha inválida";
+  // trip.date is already a Date object, format will use local timezone by default
   if (trip.date instanceof Date && !isNaN(trip.date.getTime())) {
-    const originalUtcDate = trip.date;
-    const year = originalUtcDate.getUTCFullYear();
-    const month = originalUtcDate.getUTCMonth(); // 0-indexed
-    const day = originalUtcDate.getUTCDate();
-    const hours = originalUtcDate.getUTCHours();
-    const minutes = originalUtcDate.getUTCMinutes();
-    
-    // Create a new Date object using the UTC components.
-    // This "tricks" date-fns format into displaying these values as if they were local.
-    const dateForDisplay = new Date(year, month, day, hours, minutes);
-    formattedDepartureDateTime = format(dateForDisplay, "PPP 'a las' HH:mm", { locale: es });
+    formattedDepartureDateTime = format(trip.date, "PPP 'a las' HH:mm", { locale: es });
   }
 
 

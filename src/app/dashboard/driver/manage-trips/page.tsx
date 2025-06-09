@@ -161,7 +161,7 @@ export default function ManageTripsPage() {
       </div>
       
       <CardDescription>
-        Aquí puedes ver y gestionar los viajes que has publicado y que aún no han ocurrido.
+        Aquí puedes ver y gestionar los viajes que has publicado y que aún no han ocurrido. Las horas se muestran en tu zona horaria local.
       </CardDescription>
 
       {trips.length === 0 ? (
@@ -180,18 +180,8 @@ export default function ManageTripsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {trips.map((trip) => {
-            const originalUtcDate = new Date(trip.departure_datetime);
-            const year = originalUtcDate.getUTCFullYear();
-            const month = originalUtcDate.getUTCMonth(); // 0-indexed
-            const day = originalUtcDate.getUTCDate();
-            const hours = originalUtcDate.getUTCHours();
-            const minutes = originalUtcDate.getUTCMinutes();
-            
-            // Create a new Date object using the UTC components.
-            // This "tricks" date-fns format into displaying these values as if they were local.
-            const dateForDisplay = new Date(year, month, day, hours, minutes);
-            
-            const formattedDepartureDateTime = safeFormatDate(dateForDisplay, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+            const departureDate = new Date(trip.departure_datetime);
+            const formattedDepartureDateTime = safeFormatDate(departureDate, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
             const formattedCreatedAt = safeFormatDate(trip.created_at, "dd/MM/yy HH:mm", { locale: es });
 
             return (
@@ -242,16 +232,7 @@ export default function ManageTripsPage() {
               programado para 
               <span className="font-semibold"> {
                 tripToDelete 
-                ? (() => {
-                    const originalUtcModalDate = new Date(tripToDelete.departure_datetime);
-                    const modalYear = originalUtcModalDate.getUTCFullYear();
-                    const modalMonth = originalUtcModalDate.getUTCMonth();
-                    const modalDay = originalUtcModalDate.getUTCDate();
-                    const modalHours = originalUtcModalDate.getUTCHours();
-                    const modalMinutes = originalUtcModalDate.getUTCMinutes();
-                    const modalDateForDisplay = new Date(modalYear, modalMonth, modalDay, modalHours, modalMinutes);
-                    return safeFormatDate(modalDateForDisplay, "dd MMM, yyyy HH:mm", { locale: es });
-                  })()
+                ? safeFormatDate(new Date(tripToDelete.departure_datetime), "dd MMM, yyyy HH:mm", { locale: es })
                 : ''
               } </span>
               será eliminado permanentemente.

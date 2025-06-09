@@ -153,7 +153,7 @@ export default function PassengerRequestsPage() {
         </div>
       </div>
       <CardDescription>
-        Gestiona las solicitudes de los pasajeros para tus viajes publicados. Aquí solo verás viajes con solicitudes pendientes o confirmadas.
+        Gestiona las solicitudes de los pasajeros para tus viajes publicados. Las horas se muestran en tu zona horaria local.
       </CardDescription>
 
       {tripsWithRequests.length === 0 ? (
@@ -169,18 +169,8 @@ export default function PassengerRequestsPage() {
       ) : (
         <div className="space-y-6">
           {tripsWithRequests.map((trip) => {
-            const originalUtcDate = new Date(trip.departureDateTime);
-            const year = originalUtcDate.getUTCFullYear();
-            const month = originalUtcDate.getUTCMonth(); // 0-indexed
-            const day = originalUtcDate.getUTCDate();
-            const hours = originalUtcDate.getUTCHours();
-            const minutes = originalUtcDate.getUTCMinutes();
-            
-            // Create a new Date object using the UTC components.
-            // This "tricks" date-fns format into displaying these values as if they were local.
-            const dateForDisplay = new Date(year, month, day, hours, minutes);
-            
-            const formattedDepartureDateTime = safeFormatDate(dateForDisplay, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+            const departureDate = new Date(trip.departureDateTime);
+            const formattedDepartureDateTime = safeFormatDate(departureDate, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
 
             return (
               <Card key={trip.tripId} className="shadow-lg">
