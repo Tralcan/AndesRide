@@ -44,7 +44,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
       departure_datetime,
       seats_available,
       driver_id,
-      profiles ( // Attempt to select related profile for the driver_id
+      profiles ( 
         full_name,
         avatar_url
       )
@@ -60,7 +60,6 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
 
   if (requestsError) {
     console.error('[MyBookedTripsActions] Error fetching passenger booked/requested trips:', JSON.stringify(requestsError, null, 2));
-    // Consider throwing an error or returning a specific error structure if needed by the UI
     return [];
   }
 
@@ -70,16 +69,20 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
   }
   
   console.log(`[MyBookedTripsActions] Found ${requests.length} "pending" or "confirmed" requests for passenger ${user.id}.`);
+  if (requests.length > 0) {
+    console.log(`[MyBookedTripsActions] First raw request object:`, JSON.stringify(requests[0], null, 2));
+  }
+
 
   const mappedTrips: BookedTrip[] = requests.map(req => {
     const tripData = req.trips as any;
 
     if (!tripData) {
       console.warn(`[MyBookedTripsActions] Request ID ${req.id} (trip_id: ${req.trip_id}) has no associated tripData. RLS on 'trips' might be blocking or data inconsistency.`);
-      return null; // Skip this problematic request
+      return null; 
     }
     
-    const driverProfileData = tripData.profiles as any; // Supabase nests related table by its name
+    const driverProfileData = tripData.profiles as any; 
     let driverInfo: DriverProfile | null = null;
 
     if (driverProfileData) {
@@ -88,15 +91,19 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
         avatarUrl: driverProfileData.avatar_url,
       };
     } else {
-      // Fallback if profile data is not available (e.g., RLS on profiles, or no profile linked)
       const driverIdShort = tripData.driver_id ? tripData.driver_id.substring(0, 6) : 'N/A';
       const initials = tripData.driver_id ? driverIdShort.substring(0,2).toUpperCase() : 'DR';
       driverInfo = {
-        fullName: `Conductor (ID: ${driverIdShort}...)`,
-        avatarUrl: `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`,
+        fullName: `Conductor (ID: ${driverIdShort}...)`, // Fallback name
+        avatarUrl: `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`, // Fallback avatar
       };
-      console.warn(`[MyBookedTripsActions] Profile data (tripData.profiles) not found for driver_id ${tripData.driver_id} on trip ${tripData.id}. Using fallback.`);
+      console.warn(`[MyBookedTripsActions] Profile data (tripData.profiles) not found for driver_id ${tripData.driver_id} on trip ${tripData.id}. Using fallback driver info.`);
     }
+    
+    console.log(`[MyBookedTripsActions] Processing tripData for request ${req.id}:`, JSON.stringify(tripData, null, 2));
+    console.log(`[MyBookedTripsActions] Driver profile data for request ${req.id}:`, JSON.stringify(driverProfileData, null, 2));
+    console.log(`[MyBookedTripsActions] Resulting driverInfo for request ${req.id}:`, JSON.stringify(driverInfo, null, 2));
+
 
     return {
       requestId: req.id,
@@ -133,6 +140,7 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
     console.log(`[MyBookedTripsActions] User ${user.id} attempting to cancel request ${requestId}`);
 
     try {
+        // Llamada a la función RPC en Supabase
         const { data, error } = await supabase.rpc('cancel_passenger_trip_request', {
             p_request_id: requestId
         });
@@ -142,6 +150,7 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
             return { success: false, message: `Error al cancelar la solicitud: ${error.message}` };
         }
 
+        // La función RPC devuelve una tabla con una fila: {success: boolean, message: text, new_status: text}
         const result = data && data.length > 0 ? data[0] : null;
 
         if (result && result.success) {
@@ -157,4 +166,3 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
         return { success: false, message: `Excepción: ${e.message}` };
     }
 }
-
