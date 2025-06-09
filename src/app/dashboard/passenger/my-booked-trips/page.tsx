@@ -85,10 +85,12 @@ export default function MyBookedTripsPage() {
     setIsLoading(true);
     setError(null);
     try {
+      console.log("[MyBookedTripsPage] Fetching booked trips...");
       const data = await getPassengerBookedTrips();
+      console.log("[MyBookedTripsPage] Data received from action:", JSON.stringify(data, null, 2));
       setBookedTrips(data);
     } catch (e: any) {
-      console.error("Error fetching booked trips:", e);
+      console.error("[MyBookedTripsPage] Error fetching booked trips:", e);
       setError(e.message || "No se pudieron cargar tus viajes reservados/solicitados.");
       toast({
         title: "Error al Cargar Viajes",
@@ -179,15 +181,22 @@ export default function MyBookedTripsPage() {
       ) : (
         <div className="space-y-6">
           {bookedTrips.map((trip) => {
-            // Create a Date object directly from the ISO string.
-            // `format` will use the browser's local timezone.
+            console.log(`[MyBookedTripsPage] CLIENT: Processing trip for render, request ID: ${trip.requestId}`);
+            console.log(`[MyBookedTripsPage] CLIENT: trip.driver object:`, JSON.stringify(trip.driver, null, 2));
+            console.log(`[MyBookedTripsPage] CLIENT: trip.driver?.fullName:`, trip.driver?.fullName);
+            console.log(`[MyBookedTripsPage] CLIENT: trip.driver?.avatarUrl:`, trip.driver?.avatarUrl);
+
             const departureDate = new Date(trip.departureDateTime);
             const formattedDepartureDateTime = safeFormatDate(departureDate, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
             const formattedRequestedAt = safeFormatDate(trip.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
             
-            const driverAvatarSrc = trip.driver?.avatarUrl && trip.driver.avatarUrl.trim() !== ''
+            const driverNameForDisplay = trip.driver?.fullName || "Conductor Anónimo";
+            const driverAvatarSrc = (trip.driver?.avatarUrl && trip.driver.avatarUrl.trim() !== '')
               ? trip.driver.avatarUrl
               : `https://placehold.co/40x40.png?text=${getInitials(trip.driver?.fullName)}`;
+            
+            console.log(`[MyBookedTripsPage] CLIENT: driverNameForDisplay:`, driverNameForDisplay);
+            console.log(`[MyBookedTripsPage] CLIENT: driverAvatarSrc resolved to:`, driverAvatarSrc);
             
             const isTripInFuture = departureDate > new Date();
             const canCancel = (trip.requestStatus === 'pending' || trip.requestStatus === 'confirmed') && isTripInFuture;
@@ -209,11 +218,11 @@ export default function MyBookedTripsPage() {
                 <CardContent className="pt-4 space-y-3">
                   <div className="flex items-center gap-3">
                     <Avatar className="h-10 w-10 border">
-                      <AvatarImage src={driverAvatarSrc} alt={trip.driver?.fullName || "Conductor"} data-ai-hint="profile person" />
-                      <AvatarFallback>{getInitials(trip.driver?.fullName)}</AvatarFallback>
+                      <AvatarImage src={driverAvatarSrc} alt={driverNameForDisplay} data-ai-hint="profile person" />
+                      <AvatarFallback>{getInitials(driverNameForDisplay)}</AvatarFallback>
                     </Avatar>
                     <div>
-                      <p className="font-semibold text-foreground">{trip.driver?.fullName || "Conductor Anónimo"}</p>
+                      <p className="font-semibold text-foreground">{driverNameForDisplay}</p>
                       <p className="text-xs text-muted-foreground">Conductor(a)</p>
                     </div>
                   </div>
