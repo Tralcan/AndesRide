@@ -115,10 +115,8 @@ export default function EditTripPage() {
 
       const departureDateTimeISO_UTC = data.departure_datetime; // e.g., "2025-06-27T15:00:00+00:00" (UTC)
       
-      // Convert UTC ISO string to a local Date object for the calendar and time input
       const localDateForCalendar = new Date(departureDateTimeISO_UTC);
 
-      // Extract local time components for the time input field
       const hoursLocal = localDateForCalendar.getHours().toString().padStart(2, '0');
       const minutesLocal = localDateForCalendar.getMinutes().toString().padStart(2, '0');
       const timeStringLocal = `${hoursLocal}:${minutesLocal}`; 
@@ -129,8 +127,8 @@ export default function EditTripPage() {
       form.reset({
         origin: data.origin,
         destination: data.destination,
-        date: localDateForCalendar, // Use the local Date object for the calendar
-        time: timeStringLocal, // Use the local time string for the time input
+        date: localDateForCalendar, 
+        time: timeStringLocal, 
         seats: data.seats_available,
       });
 
@@ -192,7 +190,6 @@ export default function EditTripPage() {
     try {
       const [hours, minutes] = data.time.split(':').map(Number);
       
-      // Create a Date object representing the local date and time selected by the user
       const localDepartureDate = new Date(
         data.date.getFullYear(),
         data.date.getMonth(),
@@ -202,16 +199,15 @@ export default function EditTripPage() {
       );
       console.log("[EditTripPage] Constructed localDepartureDate object:", localDepartureDate.toString());
 
-      // Convert the local Date object to an ISO string in UTC
       const departureDateTimeISO = localDepartureDate.toISOString();
       console.log("[EditTripPage] Calculated departureDateTimeISO (UTC) for Supabase:", departureDateTimeISO);
 
       const tripToUpdate = {
         origin: data.origin,
         destination: data.destination,
-        departure_datetime: departureDateTimeISO, // Send UTC ISO string to Supabase
+        departure_datetime: departureDateTimeISO,
         seats_available: data.seats,
-        updated_at: new Date().toISOString(),
+        // updated_at is removed, assuming DB trigger handles it
       };
       
       const { error: updateError } = await supabase

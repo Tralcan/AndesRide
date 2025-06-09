@@ -135,7 +135,6 @@ export default function PublishTripPage() {
     try {
       const [hours, minutes] = data.time.split(':').map(Number);
       
-      // Create a Date object representing the local date and time selected by the user
       const localDepartureDate = new Date(
         data.date.getFullYear(),
         data.date.getMonth(),
@@ -145,7 +144,6 @@ export default function PublishTripPage() {
       );
       console.log("[PublishTripPage] Constructed localDepartureDate object:", localDepartureDate.toString());
 
-      // Convert the local Date object to an ISO string in UTC
       const departureDateTimeISO = localDepartureDate.toISOString();
       console.log("[PublishTripPage] Calculated departureDateTimeISO (UTC) for Supabase:", departureDateTimeISO);
 
@@ -153,8 +151,10 @@ export default function PublishTripPage() {
         driver_id: user.id,
         origin: data.origin,
         destination: data.destination,
-        departure_datetime: departureDateTimeISO, // Send UTC ISO string to Supabase
+        departure_datetime: departureDateTimeISO,
         seats_available: data.seats,
+        status: 'published', // Assuming a default status
+        // created_at and updated_at are removed, assuming DB trigger handles them
       };
 
       console.log("[PublishTripPage] Attempting to insert trip:", JSON.stringify(tripToInsert, null, 2));
