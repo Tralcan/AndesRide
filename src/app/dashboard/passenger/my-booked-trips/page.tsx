@@ -13,8 +13,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
-import { getPassengerBookedTrips, type BookedTrip } from "./actions";
-import { MapPin, CalendarDays, UserCircle, CheckCircle, Clock, XCircle, AlertTriangle, Loader2, Inbox, ArrowRight } from "lucide-react";
+import { getPassengerBookedTrips, cancelPassengerTripRequestAction, type BookedTrip, type CancelRequestResult } from "./actions";
+import { MapPin, CalendarDays, UserCircle, CheckCircle, Clock, XCircle, AlertTriangle, Loader2, Inbox, ArrowRight, Ban } from "lucide-react";
 
 const safeFormatDate = (dateInput: string | Date, formatString: string, options?: { locale?: Locale }): string => {
   try {
@@ -56,6 +56,8 @@ const StatusBadge = ({ status }: { status: string }) => {
       return <Badge variant="default" className="bg-green-100 text-green-700 border-green-300"><CheckCircle className="mr-1 h-3 w-3" /> Confirmada</Badge>;
     case 'rejected':
       return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" /> Rechazada</Badge>;
+    case 'cancelled':
+      return <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-300"><Ban className="mr-1 h-3 w-3" /> Cancelada</Badge>;
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }
@@ -67,7 +69,7 @@ export default function MyBookedTripsPage() {
   const [bookedTrips, setBookedTrips] = useState<BookedTrip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  // const [isCancellingId, setIsCancellingId] = useState<string | null>(null);
+  const [isCancellingId, setIsCancellingId] = useState<string | null>(null);
 
   const fetchBookedTrips = useCallback(async () => {
     if (!user?.id) {
@@ -97,14 +99,29 @@ export default function MyBookedTripsPage() {
     fetchBookedTrips();
   }, [fetchBookedTrips]);
 
-  // const handleCancelRequest = async (requestId: string) => {
-  //   setIsCancellingId(requestId);
-  //   // const result = await cancelPassengerRequest(requestId);
-  //   // toast({ title: result.success ? "Solicitud Cancelada" : "Error", description: result.message, variant: result.success ? "default" : "destructive"});
-  //   // if (result.success) fetchBookedTrips();
-  //   setIsCancellingId(null);
-  //   toast({ title: "Funcionalidad no implementada", description: "Cancelar solicitudes aún no está disponible.", variant: "default"});
-  // };
+  const handleCancelRequest = async (requestId: string) => {
+    setIsCancellingId(requestId);
+    try {
+        const result: CancelRequestResult = await cancelPassengerTripRequestAction(requestId);
+        toast({ 
+            title: result.success ? "Operación Exitosa" : "Error en Operación", 
+            description: result.message, 
+            variant: result.success ? "default" : "destructive"
+        });
+        if (result.success) {
+            // Refrescar la lista de viajes para reflejar el cambio de estado
+            fetchBookedTrips(); 
+        }
+    } catch (e:any) {
+        toast({
+            title: "Error Inesperado",
+            description: "Ocurrió un error al intentar cancelar la solicitud: " + e.message,
+            variant: "destructive"
+        });
+    } finally {
+        setIsCancellingId(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -135,20 +152,20 @@ export default function MyBookedTripsPage() {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <MapPin className="h-8 w-8 text-primary" />
-          <h1 className="text-3xl font-bold">Mis Viajes Reservados</h1>
+          <h1 className="text-3xl font-bold">Mis Viajes Solicitados</h1>
         </div>
       </div>
       <CardDescription>
-        Aquí puedes ver el estado de los viajes que has solicitado o que ya han sido confirmados.
+        Aquí puedes ver el estado de los viajes que has solicitado y que están pendientes o confirmados.
       </CardDescription>
 
       {bookedTrips.length === 0 ? (
         <Card className="text-center py-12 shadow-md">
           <CardContent>
             <Inbox className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No Tienes Viajes Solicitados o Reservados</h3>
+            <h3 className="text-xl font-semibold mb-2">No Tienes Viajes Pendientes o Confirmados</h3>
             <p className="text-muted-foreground">
-              Cuando solicites unirte a un viaje, aparecerá aquí.
+              Cuando solicites unirte a un viaje y esté pendiente o confirmado, aparecerá aquí.
             </p>
             <Button asChild variant="link" className="mt-2">
                 <a href="/dashboard/passenger/search-trips">Buscar un viaje</a>
@@ -164,10 +181,14 @@ export default function MyBookedTripsPage() {
             const day = originalUtcDate.getUTCDate();
             const hours = originalUtcDate.getUTCHours();
             const minutes = originalUtcDate.getUTCMinutes();
-            const dateForDisplay = new Date(year, month, day, hours, minutes);
-            const formattedDepartureDateTime = safeFormatDate(dateForDisplay, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+            const dateForDisplay = new Date(Date.UTC(year, month, day, hours, minutes)); // Mantener como UTC para formatear
+
+            const formattedDepartureDateTime = safeFormatDate(dateForDisplay, "eeee dd MMM, yyyy 'a las' HH:mm 'UTC'", { locale: es });
             const formattedRequestedAt = safeFormatDate(trip.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
             const driverAvatarSrc = trip.driver?.avatarUrl || `https://placehold.co/40x40.png?text=${getInitials(trip.driver?.fullName)}`;
+            
+            const isTripInFuture = originalUtcDate > new Date();
+            const canCancel = (trip.requestStatus === 'pending' || trip.requestStatus === 'confirmed') && isTripInFuture;
 
             return (
               <Card key={trip.requestId} className="shadow-lg overflow-hidden">
@@ -196,11 +217,12 @@ export default function MyBookedTripsPage() {
                   </div>
                    <p className="text-xs text-muted-foreground">Solicitado el: {formattedRequestedAt}</p>
                 </CardContent>
-                {/* {trip.requestStatus === 'pending' && (
+                {canCancel && (
                   <CardFooter className="border-t pt-4">
                     <Button
                       variant="outline"
                       size="sm"
+                      className="border-destructive text-destructive hover:bg-destructive/10"
                       onClick={() => handleCancelRequest(trip.requestId)}
                       disabled={isCancellingId === trip.requestId}
                     >
@@ -208,7 +230,7 @@ export default function MyBookedTripsPage() {
                       Cancelar Solicitud
                     </Button>
                   </CardFooter>
-                )} */}
+                )}
               </Card>
             );
           })}
