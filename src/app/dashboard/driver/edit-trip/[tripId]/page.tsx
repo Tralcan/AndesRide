@@ -207,6 +207,7 @@ export default function EditTripPage() {
         destination: data.destination,
         departure_datetime: departureDateTimeISO,
         seats_available: data.seats,
+        // updated_at is removed as it should be handled by the trigger or db default
       };
       
       const { error: updateError } = await supabase
