@@ -31,22 +31,22 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
   }
   console.log('[MyBookedTripsActions] Querying trips for passenger_id:', user.id);
 
-  // La estructura de selección anidada es crucial.
-  // trips(...) y profiles(...) deben tener los campos correctos.
+  // Se utiliza un alias 'driver_profile' para la tabla 'profiles' accedida a través de 'driver_id'
+  // La sintaxis driver_id:profiles(...) indica que la columna driver_id en trips es la FK a profiles.
   const selectString = `
-    id, 
-    status, 
-    requested_at, 
+    id,
+    status,
+    requested_at,
     trip_id,
     trips (
-      id, 
-      origin, 
-      destination, 
-      departure_datetime, 
-      seats_available, 
+      id,
+      origin,
+      destination,
+      departure_datetime,
+      seats_available,
       driver_id,
-      profiles (
-        full_name, 
+      driver_profile:profiles ( 
+        full_name,
         avatar_url
       )
     )
@@ -68,22 +68,25 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     return [];
   }
 
-  console.log(`[MyBookedTripsActions] Found ${requests.length} requests for passenger ${user.id}. Raw data:`, JSON.stringify(requests.slice(0, 2), null, 2)); // Log solo las primeras 2 para brevedad
+  console.log(`[MyBookedTripsActions] Found ${requests.length} requests for passenger ${user.id}. Logging first 2 raw requests (if any):`);
+  requests.slice(0, 2).forEach((req, index) => {
+    console.log(`[MyBookedTripsActions] Raw request ${index + 1}:`, JSON.stringify(req, null, 2));
+  });
+
 
   const mappedTrips: BookedTrip[] = requests.map(req => {
-    // req.trips es el objeto anidado de la tabla 'trips'
-    // req.trips.profiles es el objeto anidado de la tabla 'profiles' a través de 'trips'
-    const tripData = req.trips as any; // Cast si la inferencia de tipos de Supabase no es perfecta aquí
-    
+    const tripData = req.trips as any;
+
     if (!tripData) {
-      console.warn(`[MyBookedTripsActions] Request ID ${req.id} has no associated tripData (req.trips is null/undefined). This might be due to RLS on 'trips' table or a broken relation.`);
-      return null; // Omitir este viaje si no hay datos del viaje
+      console.warn(`[MyBookedTripsActions] Request ID ${req.id} (associated trip_id: ${req.trip_id}) has no associated tripData (req.trips is null/undefined). This might be due to RLS on 'trips' table not allowing access for passenger ${user.id} to trip ${req.trip_id}, or a broken relation.`);
+      return null;
     }
 
-    const driverProfileData = tripData.profiles as any; // Cast similar
+    // Accedemos a los datos del perfil del conductor a través del alias 'driver_profile'
+    const driverProfileData = tripData.driver_profile as any; 
 
     if (!driverProfileData && tripData.driver_id) {
-      console.warn(`[MyBookedTripsActions] Trip ID ${tripData.id} (Request ID ${req.id}) has a driver_id (${tripData.driver_id}) but no associated driverProfileData (tripData.profiles is null/undefined). This might be due to RLS on 'profiles' table.`);
+      console.warn(`[MyBookedTripsActions] Trip ID ${tripData.id} (Request ID ${req.id}) has a driver_id (${tripData.driver_id}) but no associated driverProfileData (tripData.driver_profile is null/undefined). This might be due to RLS on 'profiles' table not allowing access for passenger ${user.id} to driver profile ${tripData.driver_id}.`);
     }
     
     const driverName = driverProfileData?.full_name || 'Conductor Anónimo';
@@ -108,7 +111,7 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
       requestedAt: req.requested_at,
       seatsAvailableOnTrip: tripData.seats_available ?? 0,
     };
-  }).filter(trip => trip !== null) as BookedTrip[]; // Filtrar los nulos si tripData no existía
+  }).filter(trip => trip !== null) as BookedTrip[];
 
   console.log(`[MyBookedTripsActions] Mapped ${mappedTrips.length} trips after processing and filtering. First mapped trip (if any):`, mappedTrips.length > 0 ? JSON.stringify(mappedTrips[0], null, 2) : "N/A");
   
