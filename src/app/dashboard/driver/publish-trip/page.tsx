@@ -16,11 +16,12 @@ import { createClientComponentClient } from '@/lib/supabase/client';
 import { zodResolver } from "@hookform/resolvers/zod";
 import { format } from "date-fns";
 import { es } from "date-fns/locale/es";
-import { CalendarIcon, MapPin, Users, PlusCircle, Clock } from "lucide-react";
+import { CalendarIcon, MapPin, Users, PlusCircle, Clock, Loader2 } from "lucide-react"; // Added Loader2
 import { useForm } from "react-hook-form";
 import { z } from "zod";
 import { useState, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import { processNewTripAndNotifyPassengersAction } from "./actions"; // Importar la nueva acción
 
 const TripFormSchema = z.object({
   origin: z.string().min(1, "Por favor selecciona un origen."),
@@ -30,7 +31,6 @@ const TripFormSchema = z.object({
   }),
   time: z.string()
     .transform((val) => {
-      // console.log("[Zod Transform PublishTrip] Original time value:", val);
       const meridiemMatch = val.match(/(\d{1,2}:\d{2})\s?(A\.?M\.?|P\.?M\.?)/i);
       if (meridiemMatch) {
         const timePart = meridiemMatch[1]; 
@@ -46,10 +46,8 @@ const TripFormSchema = z.object({
         const formattedHours = hours.toString().padStart(2, '0');
         const formattedMinutes = minutes.toString().padStart(2, '0');
         const transformed = `${formattedHours}:${formattedMinutes}`;
-        // console.log("[Zod Transform PublishTrip] Transformed time value:", transformed);
         return transformed;
       }
-      // console.log("[Zod Transform PublishTrip] No AM/PM transformation, returning original:", val);
       return val; 
     })
     .pipe(z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato de hora inválido (HH:MM requerido).")),
@@ -119,24 +117,18 @@ export default function PublishTripPage() {
   }, [toast, supabase]);
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
-    console.log("[PublishTripPage] Submitted form data (after Zod transform if applicable):", data); 
     if (!user?.id) {
       toast({
         title: "Error de Autenticación",
-        description: "No se pudo identificar al conductor (ID no encontrado). Por favor, inicia sesión de nuevo.",
+        description: "No se pudo identificar al conductor. Por favor, inicia sesión de nuevo.",
         variant: "destructive",
       });
-      console.error("PublishTripPage: onSubmit called but user.id is missing. User object:", user);
       return;
     }
     setIsSubmitting(true);
-    console.log("[PublishTripPage] User ID from auth context:", user.id);
-    console.log("[PublishTripPage] Role from auth context:", user.profile?.role);
-
 
     try {
       const [hours, minutes] = data.time.split(':').map(Number);
-      
       const localDepartureDate = new Date(
         data.date.getFullYear(),
         data.date.getMonth(),
@@ -144,42 +136,42 @@ export default function PublishTripPage() {
         hours,
         minutes
       );
-      console.log("[PublishTripPage] Constructed localDepartureDate object:", localDepartureDate.toString());
+      const departureDateTimeISO_UTC = localDepartureDate.toISOString();
 
-      const departureDateTimeISO = localDepartureDate.toISOString();
-      console.log("[PublishTripPage] Calculated departureDateTimeISO (UTC) for Supabase:", departureDateTimeISO);
-
-      const tripToInsert = {
+      const tripToProcess = {
         driver_id: user.id,
         origin: data.origin,
         destination: data.destination,
-        departure_datetime: departureDateTimeISO,
+        departure_datetime: departureDateTimeISO_UTC,
         seats_available: data.seats,
       };
 
-      console.log("[PublishTripPage] EXACT DATA TO BE INSERTED:", JSON.stringify(tripToInsert, null, 2));
+      console.log("[PublishTripPage] Calling processNewTripAndNotifyPassengersAction with:", tripToProcess);
+      const result = await processNewTripAndNotifyPassengersAction(tripToProcess);
+      console.log("[PublishTripPage] Result from processNewTripAndNotifyPassengersAction:", result);
 
-      const { data: insertedData, error } = await supabase.from('trips').insert([tripToInsert]).select();
-
-      if (error) {
-        console.error("[PublishTripPage] Supabase insert error:", JSON.stringify(error, null, 2));
-        throw error;
+      if (result.success) {
+        toast({
+          title: "¡Viaje Publicado!",
+          description: result.message, // El mensaje ahora viene de la acción
+          variant: "default",
+          duration: 7000, // Un poco más de tiempo para leer el mensaje
+        });
+        form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "10:00" }); 
+        // Considerar si redirigir a manage-trips o al dashboard principal
+        router.push("/dashboard/driver/manage-trips"); 
+      } else {
+         toast({
+          title: "Error al Publicar Viaje",
+          description: result.message,
+          variant: "destructive",
+        });
       }
-
-      console.log("[PublishTripPage] Supabase insert success. Returned data:", insertedData);
-
-      toast({
-        title: "¡Viaje Publicado!",
-        description: `Tu viaje de ${data.origin} a ${data.destination} el ${format(data.date, "PPP", { locale: es })} a las ${data.time} (hora local) ha sido publicado.`,
-        variant: "default"
-      });
-      form.reset({ seats: 1, origin: "", destination: "", date: undefined, time: "10:00" }); 
-      router.push("/dashboard");
     } catch (error: any) {
-      console.error("[PublishTripPage] Error publishing trip in catch block:", error);
+      console.error("[PublishTripPage] Error in onSubmit (catch block):", error);
       toast({
-        title: "Error al Publicar Viaje",
-        description: error.message ? error.message : "Ocurrió un error desconocido al guardar el viaje. Revisa la consola para más detalles.",
+        title: "Error Inesperado al Publicar",
+        description: error.message || "Ocurrió un error desconocido al procesar el viaje.",
         variant: "destructive",
       });
     } finally {
@@ -195,7 +187,7 @@ export default function PublishTripPage() {
           <CardTitle className="text-2xl font-bold">Publicar un Nuevo Viaje</CardTitle>
         </div>
         <CardDescription>
-          Completa los detalles a continuación para ofrecer un viaje a otros viajeros. Las horas se ingresan en tu zona horaria local.
+          Completa los detalles a continuación para ofrecer un viaje. Se notificará a los pasajeros con rutas guardadas coincidentes.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -213,7 +205,7 @@ export default function PublishTripPage() {
                     <Select 
                       onValueChange={field.onChange} 
                       value={field.value}
-                      disabled={isLoadingLocations}
+                      disabled={isLoadingLocations || isSubmitting}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -249,7 +241,7 @@ export default function PublishTripPage() {
                     <Select 
                       onValueChange={field.onChange} 
                       value={field.value}
-                      disabled={isLoadingLocations}
+                      disabled={isLoadingLocations || isSubmitting}
                     >
                       <FormControl>
                         <SelectTrigger>
@@ -294,6 +286,7 @@ export default function PublishTripPage() {
                               "w-full pl-3 text-left font-normal",
                               !field.value && "text-muted-foreground"
                             )}
+                            disabled={isSubmitting}
                           >
                             {field.value ? (
                               format(field.value, "PPP", { locale: es })
@@ -309,7 +302,7 @@ export default function PublishTripPage() {
                           mode="single"
                           selected={field.value}
                           onSelect={field.onChange}
-                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) } 
+                          disabled={(date) => date < new Date(new Date().setHours(0,0,0,0)) || isSubmitting } 
                           initialFocus
                           locale={es}
                         />
@@ -328,7 +321,7 @@ export default function PublishTripPage() {
                       <Clock className="h-4 w-4 text-muted-foreground" /> Hora del Viaje (Local)
                     </FormLabel>
                     <FormControl>
-                      <Input type="time" {...field} className="w-full" />
+                      <Input type="time" {...field} className="w-full" disabled={isSubmitting}/>
                     </FormControl>
                     <FormDescription>Ingresa la hora en tu zona horaria local.</FormDescription>
                     <FormMessage />
@@ -346,7 +339,7 @@ export default function PublishTripPage() {
                     <Users className="h-4 w-4 text-muted-foreground" /> Asientos Disponibles
                   </FormLabel>
                   <FormControl>
-                    <Input type="number" placeholder="ej: 2" {...field} onChange={e => field.onChange(parseInt(e.target.value,10) || 0)} min="1" max="10" />
+                    <Input type="number" placeholder="ej: 2" {...field} onChange={e => field.onChange(parseInt(e.target.value,10) || 0)} min="1" max="10" disabled={isSubmitting} />
                   </FormControl>
                   <FormDescription>
                     Ingresa el número de asientos que ofreces para este viaje.
@@ -356,7 +349,8 @@ export default function PublishTripPage() {
               )}
             />
             <Button type="submit" className="w-full md:w-auto" size="lg" disabled={isSubmitting || isLoadingLocations}>
-              {isSubmitting ? "Publicando..." : "Publicar Viaje"}
+              {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <PlusCircle className="mr-2 h-5 w-5" />}
+              {isSubmitting ? "Publicando y Notificando..." : "Publicar Viaje"}
             </Button>
           </form>
         </Form>
