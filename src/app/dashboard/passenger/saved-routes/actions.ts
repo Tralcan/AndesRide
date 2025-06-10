@@ -5,6 +5,7 @@
 import { createServerActionClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { format } from 'date-fns';
 
 const SavedRouteSchemaForDB = z.object({
   origin: z.string().min(1, "El origen es requerido."),
@@ -88,7 +89,6 @@ export async function addSavedRouteAction(
 
     if (insertError) {
       console.error('[addSavedRouteAction] Error inserting saved route into DB:', JSON.stringify(insertError, null, 2));
-      // Check for RLS violation explicitly
       if (insertError.message.includes("violates row-level security policy") || insertError.message.includes("permission denied")) {
         return { success: false, error: `Error de RLS: No tienes permiso para guardar la ruta. Verifica las políticas INSERT en la tabla 'saved_routes'. Detalles: ${insertError.message}`, errorDetails: insertError };
       }
@@ -125,7 +125,7 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
       .from('saved_routes')
       .delete()
       .eq('id', routeId)
-      .eq('passenger_id', user.id); // Asegura que el usuario solo borre sus propias rutas
+      .eq('passenger_id', user.id); 
 
     if (error) {
       console.error('[deleteSavedRouteAction] Error deleting saved route from DB:', error);
@@ -143,3 +143,109 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
     return { success: false, error: e.message || 'Error inesperado al eliminar la ruta.' };
   }
 }
+
+// Nueva acción para buscar viajes publicados que coincidan
+export interface PublishedTripDetails {
+  tripId: string;
+  driverEmail: string | null;
+  driverFullName: string | null;
+  departureDateTime: string; // ISO string
+  origin: string;
+  destination: string;
+  seatsAvailable: number;
+}
+
+const FindPublishedMatchingTripsInputSchema = z.object({
+  origin: z.string().describe("La ubicación de origen del viaje deseado."),
+  destination: z.string().describe("La ubicación de destino del viaje deseado."),
+  searchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe estar en formato YYYY-MM-DD.").describe("La fecha deseada para el viaje (YYYY-MM-DD)."),
+});
+export type FindPublishedMatchingTripsInput = z.infer<typeof FindPublishedMatchingTripsInputSchema>;
+
+
+export async function findPublishedMatchingTripsAction(
+  input: FindPublishedMatchingTripsInput
+): Promise<PublishedTripDetails[]> {
+  console.log('[findPublishedMatchingTripsAction] Received input:', input);
+  const supabase = createServerActionClient();
+  
+  const { data: { user }, error: authError } = await supabase.auth.getUser();
+  if (authError || !user) {
+    console.warn('[findPublishedMatchingTripsAction] No authenticated user for this action, but proceeding as it might be called by system (Genkit tool).');
+  }
+
+  try {
+    let query = supabase
+      .from('trips')
+      .select(`
+        id,
+        origin,
+        destination,
+        departure_datetime,
+        seats_available,
+        driver_id,
+        driver_profile:profiles (
+          full_name,
+          users ( email )
+        )
+      `)
+      .eq('origin', input.origin)
+      .eq('destination', input.destination)
+      .gt('seats_available', 0) // Solo viajes con asientos
+      .gt('departure_datetime', new Date().toISOString()); // Solo viajes futuros
+
+    // Filtrar por fecha: el viaje debe ocurrir en el día de searchDate (en UTC)
+    // Construir el rango de inicio y fin para el día de searchDate en UTC
+    const startDateUTC = new Date(`${input.searchDate}T00:00:00.000Z`);
+    const endDateUTC = new Date(`${input.searchDate}T23:59:59.999Z`);
+
+    console.log(`[findPublishedMatchingTripsAction] Search date range UTC: ${startDateUTC.toISOString()} to ${endDateUTC.toISOString()}`);
+    
+    query = query.gte('departure_datetime', startDateUTC.toISOString());
+    query = query.lte('departure_datetime', endDateUTC.toISOString());
+    
+    const { data: tripsData, error: tripsError } = await query;
+
+    if (tripsError) {
+      console.error('[findPublishedMatchingTripsAction] Error fetching trips:', JSON.stringify(tripsError, null, 2));
+      return [];
+    }
+
+    if (!tripsData || tripsData.length === 0) {
+      console.log('[findPublishedMatchingTripsAction] No matching trips found for:', input);
+      return [];
+    }
+
+    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips before mapping.`);
+
+    const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
+      let driverEmail: string | null = null;
+      // Acceder al email del conductor a través de la relación anidada
+      if (trip.driver_profile && trip.driver_profile.users && trip.driver_profile.users.email) {
+        driverEmail = trip.driver_profile.users.email;
+      } else if (trip.driver_profile && Array.isArray(trip.driver_profile.users) && trip.driver_profile.users.length > 0 && trip.driver_profile.users[0].email) {
+        // Caso para cuando Supabase devuelve 'users' como un array debido a RLS o estructura
+        driverEmail = trip.driver_profile.users[0].email;
+      }
+
+
+      return {
+        tripId: trip.id,
+        driverEmail: driverEmail,
+        driverFullName: trip.driver_profile?.full_name || 'Conductor Anónimo',
+        departureDateTime: trip.departure_datetime,
+        origin: trip.origin,
+        destination: trip.destination,
+        seatsAvailable: trip.seats_available,
+      };
+    });
+    
+    console.log(`[findPublishedMatchingTripsAction] Mapped ${results.length} trips. First result (if any):`, results[0]);
+    return results;
+
+  } catch (e: any) {
+    console.error('[findPublishedMatchingTripsAction] Exception:', e);
+    return [];
+  }
+}
+
