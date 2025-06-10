@@ -56,7 +56,8 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     .select(selectString)
     .eq('passenger_id', user.id)
     .in('status', ['pending', 'confirmed'])
-    .order('requested_at', { ascending: false });
+    // Order by the departure_datetime of the referenced trip in ascending order (earliest first)
+    .order('departure_datetime', { referencedTable: 'trips', ascending: true });
 
   if (requestsError) {
     console.error('[MyBookedTripsActions] Error fetching passenger booked/requested trips:', JSON.stringify(requestsError, null, 2));
