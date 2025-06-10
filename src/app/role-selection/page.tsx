@@ -1,3 +1,4 @@
+
 // src/app/role-selection/page.tsx
 "use client";
 
@@ -6,17 +7,17 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Logo } from "@/components/Logo";
 import { useAuth } from "@/hooks/useAuth";
 import { ROLES, Role as RoleType } from "@/lib/constants";
-import { Car, User, LogOut, Loader2 } from "lucide-react"; // Added Loader2
+import { Car, User, LogOut, Loader2 } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useState } from "react"; // Added useState
+import { useEffect, useState } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { useToast } from "@/hooks/use-toast"; // Added useToast
+import { useToast } from "@/hooks/use-toast";
 
 export default function RoleSelectionPage() {
   const { user, setRole, isLoading: authIsLoading, logout, isAuthenticated } = useAuth();
   const router = useRouter();
-  const { toast } = useToast(); // Initialize toast
-  const [isSubmittingRole, setIsSubmittingRole] = useState(false); // Local loading state
+  const { toast } = useToast();
+  const [isSubmittingRole, setIsSubmittingRole] = useState(false); 
 
   useEffect(() => {
     if (!authIsLoading) {
@@ -24,6 +25,8 @@ export default function RoleSelectionPage() {
         console.log("[RoleSelectionPage] User not authenticated, redirecting to /");
         router.replace("/");
       }
+      // If authenticated and already has a role, AuthRedirector should handle it.
+      // If authenticated and no role, this page is correct.
     }
   }, [authIsLoading, isAuthenticated, router]);
 
@@ -40,21 +43,30 @@ export default function RoleSelectionPage() {
   
   const handleSetRole = async (selectedRole: RoleType) => {
     console.log(`[RoleSelectionPage] User ${user?.id} attempting to set role: ${selectedRole}`);
-    setIsSubmittingRole(true);
-    try {
-      if (selectedRole) {
-        await setRole(selectedRole);
-        // Redirection should be handled within setRole in AuthContext
-        console.log(`[RoleSelectionPage] setRole(${selectedRole}) promise should have resolved and navigated.`);
-      } else {
+    if (!selectedRole) {
         console.warn("[RoleSelectionPage] No role selected or invalid role.");
         toast({ title: "Error de Selección", description: "No se seleccionó un rol válido.", variant: "destructive" });
-      }
+        return;
+    }
+    setIsSubmittingRole(true);
+    try {
+      // The setRole function in AuthContext now handles toasts and navigation
+      await setRole(selectedRole);
+      // Navigation will be handled by AuthContext or AuthRedirector upon role state change
+      console.log(`[RoleSelectionPage] setRole(${selectedRole}) promise resolved. AuthContext should handle navigation.`);
     } catch (error: any) {
         console.error("[RoleSelectionPage] Error calling setRole from page:", error);
-        toast({ title: "Error al Procesar Rol", description: error.message || "Ocurrió un error al intentar establecer el rol.", variant: "destructive" });
+        // AuthContext's setRole should ideally catch and toast this,
+        // but as a fallback:
+        toast({ 
+            title: "Error al Procesar Rol", 
+            description: error.message || "Ocurrió un error al intentar establecer el rol.", 
+            variant: "destructive" 
+        });
     } finally {
-        setIsSubmittingRole(false);
+        // Ensure isSubmittingRole is reset even if navigation is slightly delayed or if an unhandled error occurs
+        // It's possible the component unmounts due to navigation before this runs, which is fine.
+        setIsSubmittingRole(false); 
     }
   };
 
@@ -120,3 +132,5 @@ export default function RoleSelectionPage() {
     </main>
   );
 }
+
+    

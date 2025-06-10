@@ -62,7 +62,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description = "Se detectó una recursión infinita en las políticas de seguridad (RLS). Por favor, revisa las políticas.";
       } else if (error.code === 'PGRST116') { 
          console.warn("[AuthContext][fetchUserProfile] No profile found (PGRST116) or RLS check failed for user:", supabaseUser.id);
-         // This is not necessarily an error if the profile doesn't exist yet (e.g., new user)
          return null;
       }
        toast({ title, description, variant: "destructive", duration: 7000 });
@@ -116,11 +115,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             setRoleState(profile.role || null);
             console.log('[AuthContext][onAuthStateChange] User profile and role updated after fetch. Role:', profile.role);
           } else {
-            // If profile is null (e.g., new user or fetch error handled by fetchUserProfile),
-            // ensure local role state reflects this if it was previously set.
-            // This handles the case where a profile might not exist yet.
-            // The role will be set during the explicit role selection process.
-            setRoleState(null); // Reset role if profile not found
+            setRoleState(null); 
             console.log('[AuthContext][onAuthStateChange] No profile found or error during fetch. Resetting local role state.');
           }
 
@@ -147,7 +142,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
              setIsLoading(false);
           }
         }
-        // If there's an initial session, onAuthStateChange will handle fetching profile & setting isLoading=false.
       }
     })();
 
@@ -156,7 +150,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.log("[AuthContext][useEffect] Unmounting. Unsubscribing from auth changes.");
       authListener?.subscription.unsubscribe();
     };
-  }, [fetchUserProfile, supabase, isLoading]); // Removed 'role' from dependencies as it's managed internally
+  }, [fetchUserProfile, supabase, isLoading]);
 
 
   const login = async () => {
@@ -199,17 +193,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const setRoleAndUpdateProfile = async (newRole: Role) => {
-    console.log(`[AuthContext][setRole] Attempting to set role to ${newRole} for user ${user?.id}.`);
+    console.log(`[AuthContext][setRole] Start. Attempting to set role to ${newRole} for user ${user?.id}.`);
     if (!user?.id || !newRole) {
-      console.error("[AuthContext][setRole] User or newRole is invalid. UserID:", user?.id, "NewRole:", newRole);
+      console.error("[AuthContext][setRole] Invalid parameters. UserID:", user?.id, "NewRole:", newRole);
       toast({ title: "Error de Parámetros", description: "Usuario no autenticado o rol no válido.", variant: "destructive" });
       return;
     }
 
+    const toastId = `setting-role-${user.id}-${Date.now()}`;
     toast({
-      id: `setting-role-${user.id}`,
+      id: toastId,
       title: "Actualizando Rol",
-      description: `Estableciendo rol a ${newRole}...`,
+      description: `Estableciendo rol a ${newRole}... Por favor, espera.`,
       variant: "default"
     });
 
@@ -226,20 +221,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       dataToUpsert.avatar_url = userAvatarUrl;
     }
     
-    console.log("[AuthContext][setRole] PUNTO A: Antes del upsert a profiles. Data para upsert:", JSON.stringify(dataToUpsert, null, 2));
+    console.log("[AuthContext][setRole] Data for profiles upsert:", JSON.stringify(dataToUpsert, null, 2));
 
     try {
-      console.log("[AuthContext][setRole] Iniciando llamada a supabase.from('profiles').upsert()...");
-      // Adding .select() can sometimes provide more detailed errors or confirm success with data.
+      console.time(`[AuthContext][setRole] Supabase upsert for user ${user.id}`);
       const { error: upsertError, data: upsertData } = await supabase
         .from("profiles")
         .upsert(dataToUpsert)
         .select(); 
+      console.timeEnd(`[AuthContext][setRole] Supabase upsert for user ${user.id}`);
 
-      console.log("[AuthContext][setRole] PUNTO B: Después del upsert a profiles.");
-      console.log("[AuthContext][setRole] Error de Upsert (si existe):", upsertError ? JSON.stringify(upsertError, null, 2) : "No Error");
-      console.log("[AuthContext][setRole] Datos de Upsert devueltos (si existen):", upsertData ? JSON.stringify(upsertData, null, 2) : "No Data (o upsert no devolvió datos)");
-
+      console.log("[AuthContext][setRole] Upsert result. Error:", upsertError ? JSON.stringify(upsertError, null, 2) : "No Error. Data:", upsertData ? JSON.stringify(upsertData, null, 2) : "No Data");
 
       if (upsertError) {
         console.error("[AuthContext][setRole] Error upserting profile:", JSON.stringify(upsertError, null, 2));
@@ -247,9 +239,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (upsertError.message.includes("violates row-level security policy") || upsertError.message.includes("permission denied")) { 
             toastMessage = "Error de RLS: No tienes permiso para actualizar tu perfil. Revisa las políticas de INSERT/UPDATE en la tabla 'profiles'.";
         }
-        toast({
-          id: `error-upsert-role-${user.id}`,
-          title: "Error al Guardar Rol (Upsert)",
+        toast.update(toastId, {
+          title: "Error al Guardar Rol",
           description: toastMessage,
           variant: "destructive",
           duration: 9000,
@@ -273,30 +264,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       });
 
-      toast({
-        id: `role-set-success-${user.id}`,
+      toast.update(toastId, {
         title: "Rol Establecido Correctamente",
         description: `Tu rol ha sido configurado como ${newRole}. Redirigiendo...`,
         variant: "default",
       });
-      console.log("[AuthContext][setRole] PUNTO E: Rol establecido y perfil actualizado localmente. Navegando a /dashboard. Nuevo rol local:", newRole);
+      console.log("[AuthContext][setRole] Role set locally. Navigating to /dashboard. New local role:", newRole);
       router.push("/dashboard");
 
     } catch (error: any) {
-      console.error("[AuthContext][setRole] EXCEPCIÓN GENERAL durante el proceso de setRole (upsert o lógica posterior):", error);
-      // Loguear todas las propiedades del error para más detalle
-      if (error && typeof error === 'object') {
-        for (const key in error) {
-          if (Object.prototype.hasOwnProperty.call(error, key)) {
-            console.error(`[AuthContext][setRole] Error property - ${key}:`, error[key]);
-          }
-        }
-      } else {
-         console.error("[AuthContext][setRole] El objeto de error no es un objeto o es nulo:", error);
-      }
-      toast({
-        id: `error-setting-role-catch-all-${user.id}`,
-        title: "Error Inesperado al Establecer Rol (Catch)",
+      console.error("[AuthContext][setRole] EXCEPTION during setRole process:", error);
+      toast.update(toastId, {
+        title: "Error Inesperado al Establecer Rol",
         description: error.message || "Ocurrió un error desconocido al actualizar tu rol.",
         variant: "destructive",
       });
@@ -322,4 +301,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
+    
+
     
