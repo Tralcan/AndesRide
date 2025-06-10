@@ -1,3 +1,4 @@
+
 // src/app/dashboard/passenger/saved-routes/page.tsx
 "use client";
 
@@ -63,7 +64,12 @@ export default function SavedRoutesPage() {
   });
 
   const fetchSavedRoutes = useCallback(async () => {
-    if (!user) return;
+    if (!user) {
+      console.log("[SavedRoutesPage] fetchSavedRoutes: No user, skipping fetch.");
+      setIsLoadingRoutes(false); // Ensure loading state is cleared
+      return;
+    }
+    console.log("[SavedRoutesPage] fetchSavedRoutes: Fetching routes...");
     setIsLoadingRoutes(true);
     const result = await getSavedRoutesAction();
     if (result.success && result.routes) {
@@ -74,7 +80,9 @@ export default function SavedRoutesPage() {
         date: route.preferred_date ? parseISO(route.preferred_date) : null,
       }));
       setSavedRoutesUI(uiRoutes);
+      console.log(`[SavedRoutesPage] fetchSavedRoutes: Successfully fetched ${uiRoutes.length} routes.`);
     } else {
+      console.error("[SavedRoutesPage] fetchSavedRoutes: Error loading routes -", result.error);
       toast({ title: "Error al Cargar Rutas", description: result.error || "No se pudieron cargar las rutas guardadas.", variant: "destructive" });
     }
     setIsLoadingRoutes(false);
@@ -82,6 +90,7 @@ export default function SavedRoutesPage() {
 
   useEffect(() => {
     async function fetchLocations() {
+      console.log("[SavedRoutesPage] fetchLocations: Fetching locations...");
       setIsLoadingLocations(true);
       try {
         const { data: originsData, error: originsError } = await supabase.from('origen').select('nombre').eq('estado', true);
@@ -91,19 +100,29 @@ export default function SavedRoutesPage() {
         const { data: destinationsData, error: destinationsError } = await supabase.from('destino').select('nombre').eq('estado', true);
         if (destinationsError) throw destinationsError;
         setDestinations(destinationsData || []);
+        console.log("[SavedRoutesPage] fetchLocations: Successfully fetched locations.");
       } catch (error: any) {
+        console.error("[SavedRoutesPage] fetchLocations: Error fetching locations -", error);
         toast({ title: "Error al Cargar Ubicaciones", description: error.message || "No se pudieron obtener los orígenes/destinos.", variant: "destructive" });
       } finally {
         setIsLoadingLocations(false);
       }
     }
     fetchLocations();
-    fetchSavedRoutes();
-  }, [toast, supabase, fetchSavedRoutes]);
+    if (user) { // Only fetch routes if user is available
+        fetchSavedRoutes();
+    } else {
+        setIsLoadingRoutes(false); // If no user, set loading to false
+        setSavedRoutesUI([]); // Clear routes if no user
+        console.log("[SavedRoutesPage] useEffect: No user on mount, skipping initial route fetch and clearing UI routes.");
+    }
+  }, [toast, supabase, fetchSavedRoutes, user]); // Added user to dependency array
 
   async function onSubmit(formData: z.infer<typeof ClientSideFormSchema>) {
+    console.log("[SavedRoutesPage] onSubmit: Form submitted with data -", formData);
     if (!user?.email) {
-      toast({ title: "Error", description: "Email del usuario no encontrado.", variant: "destructive" });
+      console.error("[SavedRoutesPage] onSubmit: User email not found. User object:", user);
+      toast({ title: "Error de Usuario", description: "Email del usuario no encontrado. No se puede guardar la ruta.", variant: "destructive" });
       return;
     }
     setIsSubmittingForm(true);
@@ -113,23 +132,26 @@ export default function SavedRoutesPage() {
       destination: formData.destination,
       preferred_date: formData.date ? format(formData.date, "yyyy-MM-dd") : null,
     };
+    console.log("[SavedRoutesPage] onSubmit: Data prepared for DB -", routeDataForDB);
 
     const result = await addSavedRouteAction(routeDataForDB);
+    console.log("[SavedRoutesPage] onSubmit: Result from addSavedRouteAction -", JSON.stringify(result, null, 2));
 
     if (result.success && result.route) {
-      // Add to local state for immediate UI update
-      setSavedRoutesUI(prev => [{ 
-        id: result.route!.id, 
-        origin: result.route!.origin, 
-        destination: result.route!.destination,
-        date: result.route!.preferred_date ? parseISO(result.route!.preferred_date) : null
-       }, ...prev]);
+      const newRouteUI = {
+        id: result.route.id,
+        origin: result.route.origin,
+        destination: result.route.destination,
+        date: result.route.preferred_date ? parseISO(result.route.preferred_date) : null
+      };
+      setSavedRoutesUI(prev => [newRouteUI, ...prev]);
       form.reset({ origin: "", destination: "", date: undefined });
       toast({
         title: "¡Ruta Guardada en Base de Datos!",
-        description: `Ruta de ${formData.origin} a ${formData.destination} guardada. Te notificaremos sobre viajes coincidentes.`,
+        description: `Ruta de ${formData.origin} a ${formData.destination} guardada.`,
         variant: "default"
       });
+      console.log("[SavedRoutesPage] onSubmit: Route saved to DB and UI updated.");
 
       // Call Genkit flow
       try {
@@ -137,10 +159,12 @@ export default function SavedRoutesPage() {
           passengerEmail: user.email,
           origin: formData.origin,
           destination: formData.destination,
-          date: formData.date ? format(formData.date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"), // Default to today if no date
+          date: formData.date ? format(formData.date, "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd"),
         };
+        console.log("[SavedRoutesPage] onSubmit: Calling watchRoute with input -", watchInput);
         
         watchRoute(watchInput).then(output => {
+          console.log("[SavedRoutesPage] onSubmit: watchRoute output -", output);
           toast({
             title: output.routeMatchFound ? "¡Vigilante de Ruta Activo!" : "Actualización del Vigilante de Ruta",
             description: output.message || "Monitoreando tu ruta guardada.",
@@ -148,26 +172,31 @@ export default function SavedRoutesPage() {
             duration: 7000,
           });
         }).catch(genkitError => {
-          console.error("Error calling watchRoute:", genkitError);
+          console.error("[SavedRoutesPage] onSubmit: Error calling watchRoute -", genkitError);
           toast({ title: "Error del Vigilante de Ruta", description: "No se pudo iniciar la vigilancia para esta ruta.", variant: "destructive" });
         });
       } catch (error) {
-        console.error("Error setting up route watcher:", error);
+        console.error("[SavedRoutesPage] onSubmit: Error setting up route watcher -", error);
         toast({ title: "Error", description: "No se pudo configurar el vigilante de ruta.", variant: "destructive" });
       }
 
     } else {
+      console.error("[SavedRoutesPage] onSubmit: Failed to save route to DB. Error:", result.error, "Details:", result.errorDetails);
       toast({ title: "Error al Guardar Ruta", description: result.error || "No se pudo guardar la ruta en la base de datos.", variant: "destructive" });
     }
     setIsSubmittingForm(false);
   }
   
   const removeRoute = async (idToRemove: string) => {
+    console.log(`[SavedRoutesPage] removeRoute: Attempting to remove route id ${idToRemove}`);
     const result = await deleteSavedRouteAction(idToRemove);
+    console.log("[SavedRoutesPage] removeRoute: Result from deleteSavedRouteAction -", result);
     if (result.success) {
       setSavedRoutesUI(prev => prev.filter(route => route.id !== idToRemove));
       toast({ title: "Ruta Eliminada", description: "La ruta guardada ha sido eliminada de la base de datos." });
+      console.log(`[SavedRoutesPage] removeRoute: Route ${idToRemove} removed from DB and UI.`);
     } else {
+      console.error(`[SavedRoutesPage] removeRoute: Failed to delete route ${idToRemove}. Error:`, result.error);
       toast({ title: "Error al Eliminar Ruta", description: result.error || "No se pudo eliminar la ruta.", variant: "destructive" });
     }
   };
@@ -275,7 +304,8 @@ export default function SavedRoutesPage() {
                 )}
               />
               <Button type="submit" className="w-full md:w-auto" size="lg" disabled={isSubmittingForm || isLoadingLocations}>
-                <BellRing className="mr-2 h-5 w-5" /> {isSubmittingForm ? "Guardando..." : "Guardar Ruta y Vigilar"}
+                {isSubmittingForm ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <BellRing className="mr-2 h-5 w-5" />}
+                {isSubmittingForm ? "Guardando..." : "Guardar Ruta y Vigilar"}
               </Button>
             </form>
           </Form>
@@ -287,7 +317,7 @@ export default function SavedRoutesPage() {
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="ml-3 text-muted-foreground">Cargando rutas guardadas...</p>
         </div>
-      ) : savedRoutesUI.length > 0 && (
+      ) : savedRoutesUI.length > 0 ? (
         <Card className="shadow-xl">
           <CardHeader>
             <CardTitle className="text-xl font-semibold">Tus Rutas Guardadas</CardTitle>
@@ -309,6 +339,13 @@ export default function SavedRoutesPage() {
                 </Button>
               </div>
             ))}
+          </CardContent>
+        </Card>
+      ) : (
+        <Card className="text-center py-10 shadow-md">
+          <CardContent>
+            <Route className="h-12 w-12 text-muted-foreground mx-auto mb-3" />
+            <p className="text-muted-foreground">Aún no has guardado ninguna ruta.</p>
           </CardContent>
         </Card>
       )}
