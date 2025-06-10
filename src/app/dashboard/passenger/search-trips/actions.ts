@@ -5,6 +5,7 @@
 import { createServerActionClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 import { cookies } from 'next/headers';
+import { revalidatePath } from 'next/cache'; // Added revalidatePath
 
 const SearchFiltersSchema = z.object({
   origin: z.string().optional(),
@@ -106,63 +107,61 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
     const passenger_id = user.id;
     console.log(`[requestTripSeatAction] User successfully retrieved on server: { id: ${passenger_id}, email: ${user.email} }`);
 
-    console.log(`[requestTripSeatAction] Checking for existing request for tripId: ${tripId}, passengerId: ${passenger_id}`);
-    const { data: existingRequest, error: selectError } = await supabase
+    // 1. Check for an EXISTING ACTIVE request ('pending' or 'confirmed')
+    console.log(`[requestTripSeatAction] Checking for existing ACTIVE request for tripId: ${tripId}, passengerId: ${passenger_id}`);
+    const { data: existingActiveRequest, error: selectActiveError } = await supabase
       .from('trip_requests')
       .select('id, status')
       .eq('trip_id', tripId)
       .eq('passenger_id', passenger_id)
+      .in('status', ['pending', 'confirmed']) // Only check for currently active requests
       .maybeSingle();
 
-    if (selectError) {
-      console.error(`[requestTripSeatAction] Error checking for existing request: ${JSON.stringify(selectError, null, 2)}`);
-      return { success: false, message: `Error al verificar solicitud existente: ${selectError.message}` };
+    if (selectActiveError) {
+      console.error(`[requestTripSeatAction] Error checking for existing ACTIVE request: ${JSON.stringify(selectActiveError, null, 2)}`);
+      return { success: false, message: `Error al verificar solicitud activa existente: ${selectActiveError.message}` };
     }
 
-    if (existingRequest) {
-      console.log(`[requestTripSeatAction] Found existing request: id=${existingRequest.id}, status=${existingRequest.status}`);
-      
-      if (existingRequest.status === 'cancelled') {
-        console.log(`[requestTripSeatAction] Existing request (id: ${existingRequest.id}) has status 'cancelled'. Attempting to UPDATE to 'pending'.`);
-        const { error: updateError } = await supabase
-          .from('trip_requests')
-          .update({ status: 'pending', requested_at: new Date().toISOString() })
-          .eq('id', existingRequest.id)
-          .eq('passenger_id', passenger_id); // Double check ownership
-
-        if (updateError) {
-          console.error(`[requestTripSeatAction] Error updating 'cancelled' request (id: ${existingRequest.id}) to 'pending': ${JSON.stringify(updateError, null, 2)}`);
-          return { success: false, message: `Error al reactivar la solicitud cancelada: ${updateError.message}` };
-        }
-        console.log(`[requestTripSeatAction] Successfully UPDATED request (id: ${existingRequest.id}) from 'cancelled' to 'pending'.`);
-        return { success: true, message: "¡Solicitud reactivada con éxito! El conductor será notificado." };
-
-      } else {
-        // Status is 'pending', 'confirmed', or other non-cancelled active status
-        console.log(`[requestTripSeatAction] User already has an active request (status: ${existingRequest.status}) for this trip. Request ID: ${existingRequest.id}`);
-        return { success: true, message: `Ya has solicitado un asiento en este viaje y tu solicitud está ${existingRequest.status === 'pending' ? 'pendiente' : 'confirmada'}.`, alreadyRequested: true };
-      }
-    } else {
-      // No existing request found, proceed to insert a new one
-      console.log(`[requestTripSeatAction] No existing request found for tripId: ${tripId}, passengerId: ${passenger_id}. Attempting to INSERT new request.`);
-      const { error: insertError } = await supabase
-        .from('trip_requests')
-        .insert({ trip_id: tripId, passenger_id: passenger_id, status: 'pending', requested_at: new Date().toISOString() });
-
-      if (insertError) {
-        console.error(`[requestTripSeatAction] Error INSERTING new trip request: ${JSON.stringify(insertError, null, 2)}`);
-        // El mensaje de error de "constraint única" ya no debería ocurrir si la lógica de arriba es correcta
-        // y solo intentamos insertar si no hay ninguna solicitud activa o cancelada.
-        // Pero si ocurre, es probable que la verificación de existingRequest haya fallado.
-        if (insertError.code === '23505') { 
-             console.warn('[requestTripSeatAction] Unique constraint violation on insert. This indicates an issue with the existingRequest check or concurrent operations.');
-             return { success: false, message: "Error: Parece que ya existe una solicitud activa o hubo un problema de concurrencia. Por favor, recarga e intenta de nuevo." };
-        }
-        return { success: false, message: `Error al solicitar el asiento: ${insertError.message}` };
-      }
-      console.log(`[requestTripSeatAction] Successfully INSERTED new trip request for tripId: ${tripId}, passengerId: ${passenger_id}.`);
-      return { success: true, message: "¡Asiento solicitado con éxito! El conductor será notificado." };
+    if (existingActiveRequest) {
+      // User already has a pending or confirmed request for this trip.
+      console.log(`[requestTripSeatAction] Found existing ACTIVE request: id=${existingActiveRequest.id}, status=${existingActiveRequest.status}`);
+      return { 
+        success: true, 
+        message: `Ya tienes una solicitud ${existingActiveRequest.status === 'pending' ? 'pendiente' : 'confirmada'} para este viaje.`, 
+        alreadyRequested: true 
+      };
     }
+
+    // 2. No active request found. Proceed to INSERT a new request.
+    // Any previous requests with statuses like 'cancelled', 'rejected', 'cancelled_trip_modified' are just history.
+    console.log(`[requestTripSeatAction] No existing ACTIVE request found. Attempting to INSERT new request for tripId: ${tripId}, passengerId: ${passenger_id}.`);
+    const { error: insertError } = await supabase
+      .from('trip_requests')
+      .insert({ 
+        trip_id: tripId, 
+        passenger_id: passenger_id, 
+        status: 'pending', 
+        requested_at: new Date().toISOString() 
+      });
+
+    if (insertError) {
+      console.error(`[requestTripSeatAction] Error INSERTING new trip request: ${JSON.stringify(insertError, null, 2)}`);
+      if (insertError.code === '23505') { 
+           console.warn('[requestTripSeatAction] Unique constraint violation on insert. This might indicate a race condition or flaw in active request check.');
+           return { success: false, message: "Error: Ya existe una solicitud activa o hubo un problema de concurrencia. Refresca e intenta de nuevo." };
+      }
+      return { success: false, message: `Error al solicitar el asiento: ${insertError.message}` };
+    }
+    
+    console.log(`[requestTripSeatAction] Successfully INSERTED new trip request for tripId: ${tripId}, passengerId: ${passenger_id}.`);
+    
+    // Revalidate paths so UIs update
+    revalidatePath('/dashboard/passenger/my-booked-trips'); // Passenger's list of their requests
+    revalidatePath('/dashboard/driver/passenger-requests'); // Driver's list of requests for their trips
+    // revalidatePath('/dashboard/passenger/search-trips'); // Revalidating search trips might not be necessary unless UI changes based on request state.
+                                                          // For now, assume availableSeats on TripCard is sufficient.
+    
+    return { success: true, message: "¡Asiento solicitado con éxito! El conductor será notificado." };
 
   } catch (error: any) {
     console.error(`[requestTripSeatAction] Catch-all error: ${JSON.stringify(error, Object.getOwnPropertyNames(error), 2)}`);
