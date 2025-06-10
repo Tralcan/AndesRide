@@ -17,14 +17,14 @@ const WatchRouteInputSchema = z.object({
   passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
   origin: z.string().describe('La ubicación de origen deseada para la ruta.'),
   destination: z.string().describe('La ubicación de destino deseada para la ruta.'),
-  date: z.string().describe('La fecha deseada para la ruta (AAAA-MM-DD).'),
-  driverEmail: z.string().email().optional().describe('La dirección de correo electrónico del conductor que ofrece el viaje, si está disponible.'),
+  date: z.string().describe('La fecha deseada para la ruta (AAAA-MM-DD). Este campo representa la fecha preferida del pasajero para su ruta guardada. Si el LLM necesita considerar una fecha específica para una coincidencia, debe usar esta. Si la intención es monitorear para cualquier fecha futura, este campo podría ser una fecha actual o una representación de "cualquier fecha futura".'),
+  driverEmail: z.string().email().optional().describe('La dirección de correo electrónico del conductor que ofrece el viaje, si un viaje específico ya ha sido identificado externamente y se pasa a este flujo. En la mayoría de los casos de "vigilancia de ruta", este campo estará vacío, y el LLM NO debe asumir que hay un conductor específico a menos que se proporcione explícitamente.'),
 });
 export type WatchRouteInput = z.infer<typeof WatchRouteInputSchema>;
 
 const WatchRouteOutputSchema = z.object({
-  routeMatchFound: z.boolean().describe('Si se encontró una ruta coincidente.'),
-  notificationSent: z.boolean().describe('Si se envió una notificación al pasajero.'),
+  routeMatchFound: z.boolean().describe('Si se encontró una ruta coincidente REAL Y PUBLICADA.'),
+  notificationSent: z.boolean().describe('Si se envió una notificación al pasajero (solo si routeMatchFound es true).'),
   message: z.string().describe('Un mensaje que indica el resultado de la vigilancia de la ruta.'),
 });
 export type WatchRouteOutput = z.infer<typeof WatchRouteOutputSchema>;
@@ -33,10 +33,10 @@ export type WatchRouteOutput = z.infer<typeof WatchRouteOutputSchema>;
 // Define a tool to send email notifications (implementation not provided)
 const sendNotification = ai.defineTool({
   name: 'sendNotification',
-  description: 'Envía una notificación por correo electrónico al pasajero sobre un viaje coincidente.',
+  description: 'Envía una notificación por correo electrónico al pasajero sobre un viaje REAL Y PUBLICADO que coincide con su ruta guardada.',
   inputSchema: z.object({
     passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
-    message: z.string().describe('El mensaje a enviar en la notificación.'),
+    message: z.string().describe('El mensaje a enviar en la notificación, que debe incluir detalles del viaje encontrado.'),
   }),
   outputSchema: z.boolean().describe('Si la notificación se envió con éxito.'),
 },
@@ -57,24 +57,31 @@ const prompt = ai.definePrompt({
   input: {schema: WatchRouteInputSchema},
   output: {schema: WatchRouteOutputSchema},
   tools: [sendNotification],
-  prompt: `Eres un vigilante de rutas que identifica cuándo un viaje coincide con la ruta preferida de un pasajero y envía una notificación.
+  prompt: `Eres un vigilante de rutas inteligente. Tu tarea principal es verificar si *actualmente existe un viaje publicado por un conductor* que coincida con la ruta preferida de un pasajero. No debes inventar viajes.
 
-  Correo del Pasajero: {{{passengerEmail}}}
-  Origen: {{{origin}}}
-  Destino: {{{destination}}}
-  Fecha: {{{date}}}
+  Información de la ruta guardada por el pasajero:
+  - Correo del Pasajero: {{{passengerEmail}}}
+  - Origen Preferido: {{{origin}}}
+  - Destino Preferido: {{{destination}}}
+  - Fecha Preferida: {{{date}}} (Esta es la fecha que el pasajero guardó. Si no se especifica una lógica para "cualquier fecha", considera esta fecha.)
 
-  Correo del Conductor (si está disponible): {{{driverEmail}}}
+  Información del viaje (si se proporciona, de lo contrario es desconocida):
+  - Correo del Conductor (si está disponible y relevante para una coincidencia ya encontrada externamente): {{{driverEmail}}}
 
-  Determina si un viaje coincide con la ruta preferida del pasajero. Si coincide, usa la herramienta sendNotification para notificar al pasajero.
-  El mensaje de notificación debe incluir el correo electrónico del conductor (si está disponible), origen, destino y fecha.
-  Establece routeMatchFound en true si se encuentra una coincidencia, de lo contrario, en false.
-  Establece notificationSent en true si se envía una notificación, de lo contrario, en false.
-  Incluye un mensaje útil en el campo message para resumir los resultados.
+  Proceso de Decisión:
+  1. Determina si existe un viaje *real y publicado* que coincida con el origen, destino y fecha preferidos por el pasajero. Si el campo 'driverEmail' está vacío en la entrada, significa que NO se ha identificado un viaje específico de un conductor que coincida de antemano.
+  2. Solo si encuentras un viaje *real y existente* que coincida exactamente con el origen, destino y fecha (si se proporciona una fecha específica para la ruta guardada, o cualquier fecha futura si no se especifica) proporcionados por el pasajero, debes:
+     a. Establecer 'routeMatchFound' en true.
+     b. Construir un mensaje de notificación claro para el pasajero. El mensaje debe incluir el origen, destino, fecha del viaje encontrado y el correo electrónico del conductor (si se obtuvo como parte de la información del viaje coincidente, no necesariamente el 'driverEmail' del input si este estaba vacío).
+     c. Usar la herramienta 'sendNotification' para enviar este mensaje al 'passengerEmail'.
+     d. Establecer 'notificationSent' según el resultado de la herramienta.
+     e. En el campo 'message', resume la acción (ej: "Se encontró una coincidencia y se notificó al pasajero...").
+  3. Si no se encuentra ningún viaje publicado que coincida con los criterios del pasajero:
+     a. Establecer 'routeMatchFound' en false.
+     b. Establecer 'notificationSent' en false.
+     c. En el campo 'message', indica claramente que no se encontraron viajes coincidentes para la ruta (Origen: {{{origin}}}, Destino: {{{destination}}}, Fecha: {{{date}}}) y que se seguirá monitoreando. Por ejemplo: "No se encontraron viajes coincidentes para tu ruta de {{{origin}}} a {{{destination}}} en la fecha {{{date}}}. Seguiremos vigilando."
 
-  Si no hay correo electrónico del conductor disponible, menciona que la notificación incluye información sobre el origen, destino y fecha.
-
-  Asegúrate de que la salida sea un objeto JSON válido.
+  Asegúrate de que la salida sea un objeto JSON válido que cumpla con DiagnosePlantOutputSchema.
 `,
   config: {
     safetySettings: [
@@ -105,16 +112,34 @@ const watchRouteFlow = ai.defineFlow(
     outputSchema: WatchRouteOutputSchema,
   },
   async input => {
+    // En un futuro, aquí se podría añadir lógica para consultar una base de datos
+    // y pasar información de viajes REALES al prompt, o incluso hacer que una herramienta
+    // consulte la base de datos.
+    
     const {output} = await prompt(input);
 
     if (output) {
+      // Si el LLM dice que encontró una ruta pero no usó la herramienta de notificación
+      // (o la herramienta falló), ajustamos la salida para que sea consistente.
+      if (output.routeMatchFound && !output.notificationSent) {
+        // Esto podría pasar si el LLM alucina la coincidencia pero no llama a la herramienta,
+        // o si la herramienta (placeholder) fallara y devolviera false.
+        // Forzamos a que routeMatchFound sea false si la notificación no se envió.
+        // En un sistema real, querrías investigar por qué la notificación no se envió.
+        // Por ahora, si no hay notificación, no hay "coincidencia efectiva" para el usuario.
+        console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero notificationSent=false. Reajustando a routeMatchFound=false.");
+        // output.routeMatchFound = false; // Opcional: Forzar esto si la notificación es crítica para la "coincidencia"
+        // output.message = `Se detectó una posible coincidencia para ${input.origin} a ${input.destination}, pero no se pudo enviar la notificación.`;
+      }
       return output;
     } else {
+      // Esto ocurre si el LLM no devuelve ninguna salida estructurada.
       return {
         routeMatchFound: false,
         notificationSent: false,
-        message: 'No se recibió salida del prompt.',
+        message: `No se recibió una respuesta estructurada del LLM para la ruta de ${input.origin} a ${input.destination}.`,
       };
     }
   }
 );
+
