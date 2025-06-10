@@ -4,7 +4,6 @@
 
 import { createServerActionClient } from '@/lib/supabase/server';
 import { z } from 'zod';
-import { cookies } from 'next/headers';
 import { revalidatePath } from 'next/cache';
 
 const SearchFiltersSchema = z.object({
@@ -114,7 +113,7 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
       .select('id, status')
       .eq('trip_id', tripId)
       .eq('passenger_id', passenger_id)
-      .in('status', ['pending', 'confirmed']) // Only check for currently active requests
+      .in('status', ['pending', 'confirmed']) 
       .maybeSingle();
 
     if (selectActiveError) {
@@ -125,15 +124,13 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
     if (existingActiveRequest) {
       console.log(`[requestTripSeatAction] Found existing ACTIVE request: id=${existingActiveRequest.id}, status=${existingActiveRequest.status}`);
       return {
-        success: true, // Technically not an error, just informing the user
+        success: false, // Changed to false as this is an "error" from user's perspective of trying to re-request
         message: `Ya tienes una solicitud ${existingActiveRequest.status === 'pending' ? 'pendiente' : 'confirmada'} para este viaje. No puedes solicitarlo de nuevo mientras esté activa.`,
         alreadyRequested: true
       };
     }
 
     // 2. No active request found. Proceed to INSERT a new request.
-    // Any previous requests with statuses like 'cancelled', 'rejected', 'cancelled_trip_modified' are just history
-    // and should allow a new request IF THE DATABASE UNIQUE CONSTRAINT ALLOWS IT (e.g. partial unique index).
     console.log(`[requestTripSeatAction] No existing ACTIVE request found. Attempting to INSERT new 'pending' request for tripId: ${tripId}, passengerId: ${passenger_id}.`);
     const { error: insertError } = await supabase
       .from('trip_requests')
@@ -146,13 +143,12 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
 
     if (insertError) {
       console.error(`[requestTripSeatAction] Error INSERTING new trip request: ${JSON.stringify(insertError, null, 2)}`);
-      // The 23505 error (unique_violation) should ideally be prevented by a partial unique index in the DB
-      // that only considers 'pending' and 'confirmed' statuses as unique for (trip_id, passenger_id).
-      // If it still occurs, it means either the DB constraint is still too broad (e.g., UNIQUE(trip_id, passenger_id) without status filter)
-      // or there was a race condition not caught by the active check above.
-      if (insertError.code === '23505') {
-           console.warn('[requestTripSeatAction] Unique constraint violation (23505) on insert. This might indicate an issue with DB unique constraint or a race condition.');
-           return { success: false, message: "Error: Ya existe una solicitud para este viaje que impide una nueva, o hubo un problema de concurrencia. Por favor, verifica tus solicitudes existentes o refresca la página e inténtalo de nuevo." };
+      if (insertError.code === '23505') { // unique_violation
+           console.warn('[requestTripSeatAction] Unique constraint violation (23505) on insert.');
+           return { 
+            success: false, 
+            message: `Error al solicitar: Ya existe una solicitud (posiblemente inactiva) que impide una nueva debido a una constraint de unicidad en la base de datos (ej: "${insertError.message.match(/constraint "([^"]+)"/)?.[1]}"). Por favor, revisa las constraints UNIQUE en la tabla 'trip_requests' o contacta al administrador.`
+           };
       }
       return { success: false, message: `Error al solicitar el asiento: ${insertError.message}` };
     }
@@ -161,7 +157,7 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
 
     revalidatePath('/dashboard/passenger/my-booked-trips');
     revalidatePath('/dashboard/driver/passenger-requests');
-    // revalidatePath('/dashboard/passenger/search-trips'); // Potentially revalidate if UI needs to update based on request
+    revalidatePath('/dashboard/passenger/search-trips');
 
     return { success: true, message: "¡Asiento solicitado con éxito! El conductor será notificado." };
 
@@ -170,4 +166,3 @@ export async function requestTripSeatAction(tripId: string): Promise<RequestTrip
     return { success: false, message: `Ocurrió un error inesperado: ${error.message}` };
   }
 }
-    
