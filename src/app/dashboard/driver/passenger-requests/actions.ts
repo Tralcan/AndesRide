@@ -13,7 +13,7 @@ export interface PassengerRequestProfile {
 
 export interface PassengerRequest {
   id: string;
-  status: 'pending' | 'confirmed' | 'rejected';
+  status: 'pending' | 'confirmed' | 'rejected' | 'cancelled' | 'cancelled_by_driver' | 'cancelled_trip_modified';
   requestedAt: string; // ISO string
   passenger: PassengerRequestProfile | null;
 }
@@ -70,7 +70,7 @@ export async function getDriverTripsWithRequests(): Promise<TripWithPassengerReq
   }
 
   return driverTrips.map(trip => {
-    console.log(`[PassengerRequestsActions] Raw trip_requests for trip ${trip.id}:`, JSON.stringify(trip.trip_requests, null, 2));
+    // console.log(`[PassengerRequestsActions] Raw trip_requests for trip ${trip.id}:`, JSON.stringify(trip.trip_requests, null, 2));
     
     const mappedRequests = (trip.trip_requests as any[] || []).map(req => ({
       id: req.id,
@@ -83,7 +83,7 @@ export async function getDriverTripsWithRequests(): Promise<TripWithPassengerReq
       } : null,
     }));
 
-    console.log(`[PassengerRequestsActions] Mapped requests for trip ${trip.id} (before client-side filtering):`, JSON.stringify(mappedRequests, null, 2));
+    // console.log(`[PassengerRequestsActions] Mapped requests for trip ${trip.id} (before client-side filtering):`, JSON.stringify(mappedRequests, null, 2));
 
     return {
       tripId: trip.id,
@@ -130,6 +130,7 @@ export async function updateTripRequestStatus(
     return { success: false, message: 'No autorizado para modificar esta solicitud.' };
   }
   
+  // Handle seat adjustments
   if (newStatus === 'confirmed' && requestDetails.status === 'pending') {
     if (requestDetails.trips.seats_available <= 0) {
       return { success: false, message: 'No hay asientos disponibles en este viaje para confirmar la solicitud.' };
@@ -143,12 +144,21 @@ export async function updateTripRequestStatus(
         console.error('[PassengerRequestsActions] Error decrementing seats:', seatUpdateError);
         return { success: false, message: 'Error al actualizar los asientos disponibles. No se confirmó la solicitud.' };
     }
+  } else if (newStatus === 'rejected' && requestDetails.status === 'confirmed') {
+    // Increment seats if a confirmed request is rejected by the driver
+    const { error: seatUpdateError } = await supabase
+        .from('trips')
+        .update({ seats_available: requestDetails.trips.seats_available + 1 })
+        .eq('id', requestDetails.trip_id);
+    if (seatUpdateError) {
+        console.error('[PassengerRequestsActions] Error incrementing seats on rejection:', seatUpdateError);
+        // Log error, but allow status update to proceed for now
+    }
   }
 
-  // Remove updated_at from the update payload
   const { error: updateError } = await supabase
     .from('trip_requests')
-    .update({ status: newStatus }) 
+    .update({ status: newStatus, updated_at: new Date().toISOString() }) 
     .eq('id', requestId);
 
   if (updateError) {
@@ -157,6 +167,7 @@ export async function updateTripRequestStatus(
   }
 
   revalidatePath('/dashboard/driver/passenger-requests');
+  revalidatePath('/dashboard/driver/manage-trips'); // Seats available might change
+  revalidatePath(`/dashboard/passenger/my-booked-trips`); // Passenger's view might change
   return { success: true, message: `Solicitud ${newStatus === 'confirmed' ? 'confirmada' : 'rechazada'} con éxito.` };
 }
-

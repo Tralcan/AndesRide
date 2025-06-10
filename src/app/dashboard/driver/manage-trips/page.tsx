@@ -19,10 +19,17 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useToast } from "@/hooks/use-toast";
-import { ListChecks, Trash2, Edit3, CalendarDays, Users, MapPin, ArrowRight, Loader2, Frown } from "lucide-react";
-import { format, parseISO } from "date-fns"; // Import parseISO
+import { ListChecks, Trash2, Edit3, CalendarDays, Users, MapPin, ArrowRight, Loader2, Frown, AlertTriangle } from "lucide-react";
+import { format, parseISO } from "date-fns";
 import { es } from "date-fns/locale/es";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { deleteTripAndCancelRequestsAction } from "./actions";
+
+interface TripRequestSummary {
+  id: string;
+  status: string;
+}
 
 interface Trip {
   id: string;
@@ -32,19 +39,18 @@ interface Trip {
   seats_available: number;
   created_at: string;
   driver_id: string;
+  trip_requests: TripRequestSummary[]; // For calculating activeRequestCount
+  activeRequestCount: number;
 }
 
 const safeFormatDate = (dateInput: string | Date, formatString: string, options?: { locale?: Locale }): string => {
   try {
     let date: Date;
     if (typeof dateInput === 'string') {
-      date = parseISO(dateInput); // Use parseISO for strings
+      date = parseISO(dateInput);
     } else {
-      date = dateInput; // Assume it's already a Date object
+      date = dateInput;
     }
-    // Log para depuración
-    console.log(`[safeFormatDate ManageTrips] Input: ${typeof dateInput === 'string' ? dateInput : dateInput.toISOString()}, Parsed/Original Date obj (local for toString): ${date.toString()}, IsNaN: ${isNaN(date.getTime())}`);
-
     if (isNaN(date.getTime())) {
       console.warn(`[safeFormatDate ManageTrips] Invalid date after parsing/input: ${dateInput}`);
       return "Fecha inválida";
@@ -60,10 +66,14 @@ export default function ManageTripsPage() {
   const supabase = useMemo(() => createClientComponentClient(), []);
   const { user } = useAuth();
   const { toast } = useToast();
+  const router = useRouter();
   const [trips, setTrips] = useState<Trip[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [tripToDelete, setTripToDelete] = useState<Trip | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [tripToEditWarning, setTripToEditWarning] = useState<Trip | null>(null);
+
 
   const fetchTrips = useCallback(async () => {
     if (!user?.id) {
@@ -76,9 +86,9 @@ export default function ManageTripsPage() {
     setError(null);
 
     try {
-      const { data, error: fetchError } = await supabase
+      const { data: tripsData, error: fetchError } = await supabase
         .from("trips")
-        .select("*")
+        .select("*, trip_requests(id, status)") // Fetch related requests
         .eq("driver_id", user.id)
         .gt("departure_datetime", new Date().toISOString())
         .order("departure_datetime", { ascending: true });
@@ -86,7 +96,15 @@ export default function ManageTripsPage() {
       if (fetchError) {
         throw fetchError;
       }
-      setTrips(data || []);
+      
+      const enhancedTrips = (tripsData || []).map(trip => {
+        const activeRequests = (trip.trip_requests || []).filter(
+          (req: TripRequestSummary) => req.status === 'pending' || req.status === 'confirmed'
+        );
+        return { ...trip, activeRequestCount: activeRequests.length };
+      });
+      setTrips(enhancedTrips);
+
     } catch (e: any) {
       const errorMessage = e.message || "No se pudieron cargar tus viajes.";
       setError(errorMessage);
@@ -104,31 +122,43 @@ export default function ManageTripsPage() {
     fetchTrips();
   }, [fetchTrips]);
 
-  const handleDeleteTrip = async () => {
+  const handleDeleteTripConfirmed = async () => {
     if (!tripToDelete) return;
+    setIsDeleting(true);
 
     try {
-      const { error: deleteError } = await supabase
-        .from("trips")
-        .delete()
-        .eq("id", tripToDelete.id);
-
-      if (deleteError) throw deleteError;
-
-      setTrips((prevTrips) => prevTrips.filter((trip) => trip.id !== tripToDelete.id));
-      toast({
-        title: "Viaje Eliminado",
-        description: `El viaje de ${tripToDelete.origin} a ${tripToDelete.destination} ha sido eliminado.`,
-        variant: "default",
-      });
+      const result = await deleteTripAndCancelRequestsAction(tripToDelete.id);
+      if (result.success) {
+        toast({
+          title: "Viaje Eliminado",
+          description: result.message,
+          variant: "default",
+        });
+        fetchTrips(); // Refetch trips
+      } else {
+        toast({
+          title: "Error al Eliminar Viaje",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
     } catch (e: any) {
       toast({
-        title: "Error al Eliminar Viaje",
+        title: "Error Inesperado",
         description: e.message || "No se pudo eliminar el viaje.",
         variant: "destructive",
       });
     } finally {
       setTripToDelete(null);
+      setIsDeleting(false);
+    }
+  };
+  
+  const handleEditClick = (trip: Trip) => {
+    if (trip.activeRequestCount > 0) {
+      setTripToEditWarning(trip);
+    } else {
+      router.push(`/dashboard/driver/edit-trip/${trip.id}`);
     }
   };
 
@@ -188,7 +218,6 @@ export default function ManageTripsPage() {
       ) : (
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
           {trips.map((trip) => {
-            // La cadena ISO trip.departure_datetime se pasa directamente a safeFormatDate
             const formattedDepartureDateTime = safeFormatDate(trip.departure_datetime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
             const formattedCreatedAt = safeFormatDate(trip.created_at, "dd/MM/yy HH:mm", { locale: es });
 
@@ -208,17 +237,21 @@ export default function ManageTripsPage() {
                     <Users className="mr-2 h-4 w-4" />
                     {trip.seats_available} {trip.seats_available === 1 ? 'asiento disponible' : 'asientos disponibles'}
                   </div>
+                   {trip.activeRequestCount > 0 && (
+                    <div className="flex items-center text-sm text-amber-600">
+                      <AlertTriangle className="mr-2 h-4 w-4" />
+                      {trip.activeRequestCount} solicitud(es) activa(s)
+                    </div>
+                  )}
                   <div className="text-xs text-muted-foreground">
                       Publicado: {formattedCreatedAt}
                   </div>
                 </CardContent>
                 <CardFooter className="grid grid-cols-2 gap-2 pt-4">
-                  <Button variant="outline" asChild>
-                    <Link href={`/dashboard/driver/edit-trip/${trip.id}`}>
-                      <Edit3 className="mr-2 h-4 w-4" /> Editar
-                    </Link>
+                  <Button variant="outline" onClick={() => handleEditClick(trip)}>
+                    <Edit3 className="mr-2 h-4 w-4" /> Editar
                   </Button>
-                  <Button variant="destructive" onClick={() => setTripToDelete(trip)}>
+                  <Button variant="destructive" onClick={() => setTripToDelete(trip)} disabled={isDeleting}>
                     <Trash2 className="mr-2 h-4 w-4" /> Eliminar
                   </Button>
                 </CardFooter>
@@ -228,6 +261,7 @@ export default function ManageTripsPage() {
         </div>
       )}
 
+      {/* Delete Confirmation Dialog */}
       <AlertDialog open={!!tripToDelete} onOpenChange={(open) => !open && setTripToDelete(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -244,12 +278,47 @@ export default function ManageTripsPage() {
                 : ''
               } </span>
               será eliminado permanentemente.
+              {tripToDelete && tripToDelete.activeRequestCount > 0 && (
+                <p className="mt-2 text-amber-700 font-semibold">
+                  <AlertTriangle className="inline h-4 w-4 mr-1" />
+                  Esto también cancelará {tripToDelete.activeRequestCount} solicitud(es) de pasajeros activas para este viaje.
+                </p>
+              )}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel onClick={() => setTripToDelete(null)}>Cancelar</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteTrip}>
-              Sí, Eliminar Viaje
+            <AlertDialogCancel onClick={() => setTripToDelete(null)} disabled={isDeleting}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteTripConfirmed} disabled={isDeleting}>
+              {isDeleting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+              {isDeleting ? "Eliminando..." : "Sí, Eliminar Viaje"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Edit Warning Dialog */}
+      <AlertDialog open={!!tripToEditWarning} onOpenChange={(open) => !open && setTripToEditWarning(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Advertencia al Editar Viaje</AlertDialogTitle>
+            <AlertDialogDescription>
+              Editar este viaje (de <span className="font-semibold">{tripToEditWarning?.origin}</span> a <span className="font-semibold">{tripToEditWarning?.destination}</span>) 
+              cancelará <span className="font-semibold">{tripToEditWarning?.activeRequestCount}</span> solicitud(es) de pasajeros activas (pendientes y confirmadas).
+              <br />
+              Los pasajeros deberán volver a solicitar unirse al viaje modificado si aún están interesados.
+              <br /><br />
+              ¿Deseas continuar con la edición?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setTripToEditWarning(null)}>No, Cancelar</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={() => {
+                if (tripToEditWarning) router.push(`/dashboard/driver/edit-trip/${tripToEditWarning.id}`);
+                setTripToEditWarning(null);
+              }}
+            >
+              Sí, Continuar Editando
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -257,4 +326,3 @@ export default function ManageTripsPage() {
     </div>
   );
 }
-

@@ -4,7 +4,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Image from "next/image";
-import { format, parseISO } from "date-fns"; // Import parseISO
+import { format, parseISO, isPast } from "date-fns"; 
 import { es } from "date-fns/locale/es";
 import type { Locale } from "date-fns";
 import { useAuth } from "@/hooks/useAuth";
@@ -14,19 +14,16 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { getPassengerBookedTrips, cancelPassengerTripRequestAction, type BookedTrip, type CancelRequestResult } from "./actions";
-import { MapPin, CalendarDays, UserCircle, CheckCircle, Clock, XCircle, AlertTriangle, Loader2, Inbox, ArrowRight, Ban } from "lucide-react";
+import { MapPin, CalendarDays, UserCircle, CheckCircle, Clock, XCircle, AlertTriangle, Loader2, Inbox, ArrowRight, Ban, Edit } from "lucide-react"; // Added Edit for modified trips
 
 const safeFormatDate = (dateInput: string | Date, formatString: string, options?: { locale?: Locale }): string => {
   try {
     let date: Date;
     if (typeof dateInput === 'string') {
-      date = parseISO(dateInput); // Use parseISO for strings
+      date = parseISO(dateInput); 
     } else {
-      date = dateInput; // Assume it's already a Date object
+      date = dateInput; 
     }
-    // Log para depuración
-    console.log(`[safeFormatDate MyBookedTrips] Input: ${typeof dateInput === 'string' ? dateInput : dateInput.toISOString()}, Parsed/Original Date obj (local for toString): ${date.toString()}, IsNaN: ${isNaN(date.getTime())}`);
-    
     if (isNaN(date.getTime())) {
       console.warn(`[safeFormatDate MyBookedTrips] Invalid date after parsing/input: ${dateInput}`);
       return "Fecha inválida";
@@ -48,7 +45,7 @@ const getInitials = (name?: string | null) => {
         if (emailPart && emailPart.trim() !== '') {
             return emailPart.substring(0, Math.min(2, emailPart.length)).toUpperCase();
         }
-        return "DR"; // Default for Driver
+        return "DR"; 
     }
     const names = name.split(" ").filter(n => n.trim() !== '');
     if (names.length === 0) return "??";
@@ -61,16 +58,26 @@ const getInitials = (name?: string | null) => {
     return initials || "??";
 };
 
-const StatusBadge = ({ status }: { status: string }) => {
+const StatusBadge = ({ status, tripDepartureISO }: { status: string; tripDepartureISO: string }) => {
+  const isTripPast = isPast(parseISO(tripDepartureISO));
+
+  if (isTripPast && (status === 'pending' || status === 'confirmed')) {
+     return <Badge variant="outline" className="border-slate-400 text-slate-600 bg-slate-100"><Clock className="mr-1 h-3 w-3" /> Completado/Pasado</Badge>;
+  }
+
   switch (status) {
     case 'pending':
       return <Badge variant="outline" className="border-yellow-400 text-yellow-600 bg-yellow-50"><Clock className="mr-1 h-3 w-3" /> Pendiente</Badge>;
     case 'confirmed':
       return <Badge variant="default" className="bg-green-100 text-green-700 border-green-300"><CheckCircle className="mr-1 h-3 w-3" /> Confirmada</Badge>;
     case 'rejected':
-      return <Badge variant="destructive"><XCircle className="mr-1 h-3 w-3" /> Rechazada</Badge>;
-    case 'cancelled':
-      return <Badge variant="secondary" className="bg-slate-100 text-slate-600 border-slate-300"><Ban className="mr-1 h-3 w-3" /> Cancelada</Badge>;
+      return <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-300"><XCircle className="mr-1 h-3 w-3" /> Rechazada</Badge>;
+    case 'cancelled': // Passenger cancelled
+      return <Badge variant="secondary" className="bg-orange-100 text-orange-700 border-orange-300"><Ban className="mr-1 h-3 w-3" /> Cancelada por ti</Badge>;
+    case 'cancelled_by_driver':
+      return <Badge variant="destructive" className="bg-red-100 text-red-700 border-red-300"><Ban className="mr-1 h-3 w-3" /> Cancelada por Conductor</Badge>;
+    case 'cancelled_trip_modified':
+      return <Badge variant="destructive" className="bg-purple-100 text-purple-700 border-purple-300"><Edit className="mr-1 h-3 w-3" /> Viaje Modificado</Badge>;
     default:
       return <Badge variant="secondary">{status}</Badge>;
   }
@@ -93,9 +100,7 @@ export default function MyBookedTripsPage() {
     setIsLoading(true);
     setError(null);
     try {
-      console.log("[MyBookedTripsPage] Fetching booked trips...");
-      const data = await getPassengerBookedTrips();
-      console.log("[MyBookedTripsPage] Data received from action:", JSON.stringify(data, null, 2));
+      const data = await getPassengerBookedTrips(); // This action now fetches all relevant statuses for history
       setBookedTrips(data);
     } catch (e: any) {
       console.error("[MyBookedTripsPage] Error fetching booked trips:", e);
@@ -136,6 +141,15 @@ export default function MyBookedTripsPage() {
         setIsCancellingId(null);
     }
   };
+  
+  // Separate active and past/cancelled trips for display
+  const activeTrips = bookedTrips.filter(trip => 
+    (trip.requestStatus === 'pending' || trip.requestStatus === 'confirmed') && !isPast(parseISO(trip.departureDateTime))
+  );
+  const historicalTrips = bookedTrips.filter(trip => 
+    !( (trip.requestStatus === 'pending' || trip.requestStatus === 'confirmed') && !isPast(parseISO(trip.departureDateTime)) )
+  );
+
 
   if (isLoading) {
     return (
@@ -170,100 +184,136 @@ export default function MyBookedTripsPage() {
         </div>
       </div>
       <CardDescription>
-        Aquí puedes ver el estado de los viajes que has solicitado y que están pendientes o confirmados. Las horas se muestran en tu zona horaria local.
+        Aquí puedes ver el estado de los viajes que has solicitado. Las horas se muestran en tu zona horaria local.
       </CardDescription>
 
-      {bookedTrips.length === 0 ? (
+      {activeTrips.length === 0 && historicalTrips.length === 0 && (
         <Card className="text-center py-12 shadow-md">
           <CardContent>
             <Inbox className="h-16 w-16 text-muted-foreground mx-auto mb-4" />
-            <h3 className="text-xl font-semibold mb-2">No Tienes Viajes Pendientes o Confirmados</h3>
+            <h3 className="text-xl font-semibold mb-2">No Tienes Viajes Solicitados</h3>
             <p className="text-muted-foreground">
-              Cuando solicites unirte a un viaje y esté pendiente o confirmado, aparecerá aquí.
+              Cuando solicites unirte a un viaje, aparecerá aquí.
             </p>
             <Button asChild variant="link" className="mt-2">
-                <a href="/dashboard/passenger/search-trips">Buscar un viaje</a>
+                <Link href="/dashboard/passenger/search-trips">Buscar un viaje</Link>
             </Button>
           </CardContent>
         </Card>
-      ) : (
-        <div className="space-y-6">
-          {bookedTrips.map((trip) => {
-            console.log(`[MyBookedTripsPage] CLIENT: Rendering trip for request ID: ${trip.requestId}`);
-            console.log(`[MyBookedTripsPage] CLIENT: trip.driver object:`, JSON.stringify(trip.driver, null, 2));
-            console.log(`[MyBookedTripsPage] CLIENT: trip.driver?.fullName:`, trip.driver?.fullName);
-            console.log(`[MyBookedTripsPage] CLIENT: trip.driver?.avatarUrl:`, trip.driver?.avatarUrl);
-            
-            // La cadena ISO trip.departureDateTime se pasa directamente a safeFormatDate
-            const formattedDepartureDateTime = safeFormatDate(trip.departureDateTime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
-            // La cadena ISO trip.requestedAt se pasa directamente a safeFormatDate
-            const formattedRequestedAt = safeFormatDate(trip.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
-            
-            const driverNameForDisplay = trip.driver?.fullName || "Conductor Anónimo";
-            const driverAvatarSrc = (trip.driver?.avatarUrl && trip.driver.avatarUrl.trim() !== '')
-              ? trip.driver.avatarUrl
-              : `https://placehold.co/40x40.png?text=${getInitials(trip.driver?.fullName)}`;
-            
-            console.log(`[MyBookedTripsPage] CLIENT: driverNameForDisplay:`, driverNameForDisplay);
-            console.log(`[MyBookedTripsPage] CLIENT: driverAvatarSrc resolved to:`, driverAvatarSrc);
-            
-            // Determinar si el viaje es futuro para habilitar la cancelación
-            let isTripInFuture = false;
-            try {
-                const departureDate = parseISO(trip.departureDateTime);
-                isTripInFuture = departureDate > new Date();
-            } catch (e) {
-                console.error("Error parsing trip.departureDateTime for future check:", trip.departureDateTime, e);
-            }
-            const canCancel = (trip.requestStatus === 'pending' || trip.requestStatus === 'confirmed') && isTripInFuture;
+      )}
 
-            return (
-              <Card key={trip.requestId} className="shadow-lg overflow-hidden">
-                <CardHeader className="pb-4 border-b bg-muted/30">
-                    <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
-                        <CardTitle className="text-xl flex items-center">
-                            {trip.origin} <ArrowRight className="inline h-5 w-5 mx-2 text-muted-foreground" /> {trip.destination}
-                        </CardTitle>
-                        <StatusBadge status={trip.requestStatus} />
+      {activeTrips.length > 0 && (
+        <div>
+          <h2 className="text-2xl font-semibold mb-4">Viajes Activos</h2>
+          <div className="space-y-6">
+            {activeTrips.map((trip) => {
+              const formattedDepartureDateTime = safeFormatDate(trip.departureDateTime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+              const formattedRequestedAt = safeFormatDate(trip.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
+              const driverNameForDisplay = trip.driver?.fullName || "Conductor Anónimo";
+              const driverAvatarSrc = (trip.driver?.avatarUrl && trip.driver.avatarUrl.trim() !== '')
+                ? trip.driver.avatarUrl
+                : `https://placehold.co/40x40.png?text=${getInitials(trip.driver?.fullName)}`;
+              const canCancel = (trip.requestStatus === 'pending' || trip.requestStatus === 'confirmed') && !isPast(parseISO(trip.departureDateTime));
+
+              return (
+                <Card key={trip.requestId} className="shadow-lg overflow-hidden">
+                  <CardHeader className="pb-4 border-b bg-muted/30">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                          <CardTitle className="text-xl flex items-center">
+                              {trip.origin} <ArrowRight className="inline h-5 w-5 mx-2 text-muted-foreground" /> {trip.destination}
+                          </CardTitle>
+                          <StatusBadge status={trip.requestStatus} tripDepartureISO={trip.departureDateTime} />
+                      </div>
+                    <div className="flex items-center text-sm text-muted-foreground pt-1">
+                      <CalendarDays className="mr-2 h-4 w-4" />
+                      {formattedDepartureDateTime}
                     </div>
-                  <div className="flex items-center text-sm text-muted-foreground pt-1">
-                    <CalendarDays className="mr-2 h-4 w-4" />
-                    {formattedDepartureDateTime}
-                  </div>
-                </CardHeader>
-                <CardContent className="pt-4 space-y-3">
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-10 w-10 border">
-                      <AvatarImage src={driverAvatarSrc} alt={driverNameForDisplay} data-ai-hint="profile person" />
-                      <AvatarFallback>{getInitials(driverNameForDisplay)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-semibold text-foreground">{driverNameForDisplay}</p>
-                      <p className="text-xs text-muted-foreground">Conductor(a)</p>
+                  </CardHeader>
+                  <CardContent className="pt-4 space-y-3">
+                    <div className="flex items-center gap-3">
+                      <Avatar className="h-10 w-10 border">
+                        <AvatarImage src={driverAvatarSrc} alt={driverNameForDisplay} data-ai-hint="profile person" />
+                        <AvatarFallback>{getInitials(driverNameForDisplay)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-semibold text-foreground">{driverNameForDisplay}</p>
+                        <p className="text-xs text-muted-foreground">Conductor(a)</p>
+                      </div>
                     </div>
-                  </div>
-                   <p className="text-xs text-muted-foreground">Solicitado el: {formattedRequestedAt}</p>
-                </CardContent>
-                {canCancel && (
-                  <CardFooter className="border-t pt-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      className="border-destructive text-destructive hover:bg-destructive/10"
-                      onClick={() => handleCancelRequest(trip.requestId)}
-                      disabled={isCancellingId === trip.requestId}
-                    >
-                      {isCancellingId === trip.requestId ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="mr-1 h-4 w-4" />}
-                      Cancelar Solicitud
-                    </Button>
-                  </CardFooter>
-                )}
-              </Card>
-            );
-          })}
+                     <p className="text-xs text-muted-foreground">Solicitado el: {formattedRequestedAt}</p>
+                  </CardContent>
+                  {canCancel && (
+                    <CardFooter className="border-t pt-4">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="border-destructive text-destructive hover:bg-destructive/10"
+                        onClick={() => handleCancelRequest(trip.requestId)}
+                        disabled={isCancellingId === trip.requestId}
+                      >
+                        {isCancellingId === trip.requestId ? <Loader2 className="h-4 w-4 animate-spin mr-1" /> : <XCircle className="mr-1 h-4 w-4" />}
+                        Cancelar Solicitud
+                      </Button>
+                    </CardFooter>
+                  )}
+                </Card>
+              );
+            })}
+          </div>
+        </div>
+      )}
+      
+      {historicalTrips.length > 0 && (
+         <div className="mt-12">
+          <h2 className="text-2xl font-semibold mb-4">Historial de Viajes</h2>
+          <div className="space-y-6">
+            {historicalTrips.map((trip) => {
+              const formattedDepartureDateTime = safeFormatDate(trip.departureDateTime, "eeee dd MMM, yyyy 'a las' HH:mm", { locale: es });
+              const formattedRequestedAt = safeFormatDate(trip.requestedAt, "dd MMM, yyyy HH:mm", { locale: es });
+              const driverNameForDisplay = trip.driver?.fullName || "Conductor Anónimo";
+              const driverAvatarSrc = (trip.driver?.avatarUrl && trip.driver.avatarUrl.trim() !== '')
+                ? trip.driver.avatarUrl
+                : `https://placehold.co/40x40.png?text=${getInitials(trip.driver?.fullName)}`;
+              
+              return (
+                <Card key={trip.requestId} className="shadow-md overflow-hidden bg-muted/20 opacity-80">
+                  <CardHeader className="pb-4 border-b">
+                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center">
+                          <CardTitle className="text-lg flex items-center text-muted-foreground">
+                              {trip.origin} <ArrowRight className="inline h-4 w-4 mx-2 text-muted-foreground/70" /> {trip.destination}
+                          </CardTitle>
+                          <StatusBadge status={trip.requestStatus} tripDepartureISO={trip.departureDateTime}/>
+                      </div>
+                    <div className="flex items-center text-xs text-muted-foreground pt-1">
+                      <CalendarDays className="mr-2 h-3 w-3" />
+                      {formattedDepartureDateTime}
+                    </div>
+                  </CardHeader>
+                  <CardContent className="pt-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Avatar className="h-8 w-8 border">
+                        <AvatarImage src={driverAvatarSrc} alt={driverNameForDisplay} data-ai-hint="profile person" />
+                        <AvatarFallback className="text-xs">{getInitials(driverNameForDisplay)}</AvatarFallback>
+                      </Avatar>
+                      <div>
+                        <p className="font-medium text-sm text-muted-foreground">{driverNameForDisplay}</p>
+                        <p className="text-xs text-muted-foreground/80">Conductor(a)</p>
+                      </div>
+                    </div>
+                     <p className="text-xs text-muted-foreground/80">Solicitado el: {formattedRequestedAt}</p>
+                      {trip.requestStatus === 'cancelled_trip_modified' && 
+                        <p className="text-xs text-purple-600">El conductor modificó este viaje después de tu solicitud. Puedes buscarlo de nuevo si sigues interesado.</p>
+                      }
+                      {trip.requestStatus === 'cancelled_by_driver' && 
+                        <p className="text-xs text-red-600">El conductor canceló este viaje.</p>
+                      }
+                  </CardContent>
+                </Card>
+              );
+            })}
+          </div>
         </div>
       )}
     </div>
   );
 }
-    

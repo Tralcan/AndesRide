@@ -17,7 +17,7 @@ export interface BookedTrip {
   destination: string;
   departureDateTime: string; // ISO string
   driver: DriverProfile | null;
-  requestStatus: 'pending' | 'confirmed' | 'rejected' | 'cancelled' | string;
+  requestStatus: 'pending' | 'confirmed' | 'rejected' | 'cancelled' | 'cancelled_by_driver' | 'cancelled_trip_modified' | string;
   requestedAt: string; // ISO string
   seatsAvailableOnTrip: number;
 }
@@ -51,28 +51,25 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     )
   `;
 
+  // Fetch all non-rejected requests to show history appropriately
   const { data: requests, error: requestsError } = await supabase
     .from('trip_requests')
     .select(selectString)
     .eq('passenger_id', user.id)
-    .in('status', ['pending', 'confirmed'])
-    // Order by the departure_datetime of the referenced trip in ascending order (earliest first)
-    .order('departure_datetime', { referencedTable: 'trips', ascending: true });
+    .not('status', 'eq', 'rejected') // Exclude explicitly rejected by driver unless needed for history
+    .order('departure_datetime', { referencedTable: 'trips', ascending: false }); // Show newest trip dates first overall
 
   if (requestsError) {
-    console.error('[MyBookedTripsActions] Error fetching passenger booked/requested trips:', JSON.stringify(requestsError, null, 2));
+    console.error('[MyBookedTripsActions] Error fetching passenger trips:', JSON.stringify(requestsError, null, 2));
     return [];
   }
 
   if (!requests || requests.length === 0) {
-    console.log('[MyBookedTripsActions] No "pending" or "confirmed" requests found for passenger_id:', user.id);
+    console.log('[MyBookedTripsActions] No non-rejected requests found for passenger_id:', user.id);
     return [];
   }
   
-  console.log(`[MyBookedTripsActions] Found ${requests.length} "pending" or "confirmed" requests for passenger ${user.id}.`);
-  if (requests.length > 0) {
-    console.log(`[MyBookedTripsActions] First raw request object (with nested trip and profile) BEFORE MAPPING:`, JSON.stringify(requests[0], null, 2));
-  }
+  console.log(`[MyBookedTripsActions] Found ${requests.length} non-rejected requests for passenger ${user.id}.`);
 
   const mappedTrips: BookedTrip[] = requests.map(req => {
     const tripData = req.trips as any; 
@@ -82,19 +79,14 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
       return null; 
     }
     
-    console.log(`[MyBookedTripsActions] Mapping: Processing tripData for request ${req.id}:`, JSON.stringify(tripData, null, 2));
-    
     const driverProfileData = tripData.driver_profile as any; 
     let driverInfo: DriverProfile | null = null;
 
-    console.log(`[MyBookedTripsActions] Mapping: Raw driver_profile data for trip ${tripData.id}:`, JSON.stringify(driverProfileData, null, 2));
-
     if (driverProfileData && typeof driverProfileData === 'object') {
       driverInfo = {
-        fullName: driverProfileData.full_name || null, // Ensure null if undefined/empty
-        avatarUrl: driverProfileData.avatar_url || null, // Ensure null if undefined/empty
+        fullName: driverProfileData.full_name || null,
+        avatarUrl: driverProfileData.avatar_url || null,
       };
-      console.log(`[MyBookedTripsActions] Mapping: driverInfo CREATED for trip ${tripData.id}:`, JSON.stringify(driverInfo, null, 2));
     } else {
       const driverIdShort = tripData.driver_id ? tripData.driver_id.substring(0, 6) : 'N/A';
       const initials = tripData.driver_id ? driverIdShort.substring(0,2).toUpperCase() : 'DR';
@@ -102,8 +94,6 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
         fullName: `Conductor (ID: ${driverIdShort}...)`, 
         avatarUrl: `https://placehold.co/100x100.png?text=${encodeURIComponent(initials)}`,
       };
-      console.warn(`[MyBookedTripsActions] Mapping: Profile data (tripData.driver_profile) not found or not an object for driver_id ${tripData.driver_id} on trip ${tripData.id}. Using FALLBACK driver info. Raw driver_profile:`, JSON.stringify(driverProfileData, null, 2));
-      console.log(`[MyBookedTripsActions] Mapping: driverInfo FALLBACK for trip ${tripData.id}:`, JSON.stringify(driverInfo, null, 2));
     }
     
     return {
@@ -119,10 +109,24 @@ export async function getPassengerBookedTrips(): Promise<BookedTrip[]> {
     };
   }).filter(trip => trip !== null) as BookedTrip[]; 
 
-  console.log(`[MyBookedTripsActions] Mapped ${mappedTrips.length} trips.`);
-  if (mappedTrips.length > 0) {
-    console.log(`[MyBookedTripsActions] First MAPPED trip object sent to client:`, JSON.stringify(mappedTrips[0], null, 2));
-  }
+  // Sort client-side to ensure active trips (pending/confirmed future) are first, then historical.
+  mappedTrips.sort((a, b) => {
+    const aIsActive = (a.requestStatus === 'pending' || a.requestStatus === 'confirmed') && new Date(a.departureDateTime) > new Date();
+    const bIsActive = (b.requestStatus === 'pending' || b.requestStatus === 'confirmed') && new Date(b.departureDateTime) > new Date();
+
+    if (aIsActive && !bIsActive) return -1; // a comes first
+    if (!aIsActive && bIsActive) return 1;  // b comes first
+
+    // If both are active or both are historical, sort by departure date (most recent first for historical, soonest first for active)
+    if (aIsActive) { // Both active, soonest first
+        return new Date(a.departureDateTime).getTime() - new Date(b.departureDateTime).getTime();
+    } else { // Both historical, most recent departure first
+        return new Date(b.departureDateTime).getTime() - new Date(a.departureDateTime).getTime();
+    }
+  });
+
+
+  console.log(`[MyBookedTripsActions] Mapped and sorted ${mappedTrips.length} trips.`);
   return mappedTrips;
 }
 
@@ -132,6 +136,8 @@ export interface CancelRequestResult {
     newStatus?: string | null;
 }
 
+// This RPC function 'cancel_passenger_trip_request' MUST handle incrementing 'seats_available'
+// on the 'trips' table if the request status was 'confirmed'.
 export async function cancelPassengerTripRequestAction(requestId: string): Promise<CancelRequestResult> {
     const supabase = createServerActionClient();
     const { data: { user } } = await supabase.auth.getUser();
@@ -144,6 +150,7 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
     console.log(`[MyBookedTripsActions] User ${user.id} attempting to cancel request ${requestId}`);
 
     try {
+        // It's crucial that this RPC handles seat adjustments if cancelling a 'confirmed' request.
         const { data, error } = await supabase.rpc('cancel_passenger_trip_request', {
             p_request_id: requestId
         });
@@ -158,6 +165,8 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
         if (result && result.success) {
             console.log(`[MyBookedTripsActions] Request ${requestId} cancelled successfully via RPC. New status: ${result.new_status}`);
             revalidatePath('/dashboard/passenger/my-booked-trips'); 
+            revalidatePath('/dashboard/driver/passenger-requests'); // Driver's view of requests
+            revalidatePath('/dashboard/driver/manage-trips'); // Driver's trip list (seats available)
             return { success: true, message: result.message, newStatus: result.new_status };
         } else {
             console.warn(`[MyBookedTripsActions] RPC call to cancel request ${requestId} did not succeed or returned unexpected data. Result:`, result);
@@ -168,4 +177,3 @@ export async function cancelPassengerTripRequestAction(requestId: string): Promi
         return { success: false, message: `Excepción al cancelar solicitud: ${e.message}` };
     }
 }
-    

@@ -22,6 +22,7 @@ import { z } from "zod";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { useRouter, useParams } from "next/navigation";
 import Link from "next/link";
+import { updateTripAndHandleRequestsAction, type TripFormData } from "./actions";
 
 const TripFormSchema = z.object({
   origin: z.string().min(1, "Por favor selecciona un origen."),
@@ -31,7 +32,6 @@ const TripFormSchema = z.object({
   }),
   time: z.string()
     .transform((val) => {
-      // console.log("[Zod Transform EditTrip] Original time value:", val);
       const meridiemMatch = val.match(/(\d{1,2}:\d{2})\s?(A\.?M\.?|P\.?M\.?)/i);
       if (meridiemMatch) {
         const timePart = meridiemMatch[1]; 
@@ -47,10 +47,8 @@ const TripFormSchema = z.object({
         const formattedHours = hours.toString().padStart(2, '0');
         const formattedMinutes = minutes.toString().padStart(2, '0');
         const transformed = `${formattedHours}:${formattedMinutes}`;
-        // console.log("[Zod Transform EditTrip] Transformed time value:", transformed);
         return transformed;
       }
-      // console.log("[Zod Transform EditTrip] No AM/PM transformation, returning original:", val);
       return val;
     })
     .pipe(z.string().regex(/^([01]\d|2[0-3]):([0-5]\d)$/, "Formato de hora inválido (HH:MM requerido).")),
@@ -113,16 +111,11 @@ export default function EditTripPage() {
          return;
       }
 
-      const departureDateTimeISO_UTC = data.departure_datetime; // e.g., "2025-06-27T15:00:00+00:00" (UTC)
-      
+      const departureDateTimeISO_UTC = data.departure_datetime;
       const localDateForCalendar = new Date(departureDateTimeISO_UTC);
-
       const hoursLocal = localDateForCalendar.getHours().toString().padStart(2, '0');
       const minutesLocal = localDateForCalendar.getMinutes().toString().padStart(2, '0');
       const timeStringLocal = `${hoursLocal}:${minutesLocal}`; 
-      
-      console.log(`[EditTripPage] Fetched trip. Original departure_datetime (UTC): ${departureDateTimeISO_UTC}.`);
-      console.log(`[EditTripPage] Date for calendar (local): ${localDateForCalendar.toISOString()}. Time for form (local HH:MM): ${timeStringLocal}`);
 
       form.reset({
         origin: data.origin,
@@ -180,7 +173,6 @@ export default function EditTripPage() {
 
 
   async function onSubmit(data: z.infer<typeof TripFormSchema>) {
-    console.log("[EditTripPage] Submitted form data (after Zod transform if applicable):", data); 
     if (!user?.id || !tripId) {
       toast({ title: "Error", description: "Falta información para actualizar.", variant: "destructive" });
       return;
@@ -189,7 +181,6 @@ export default function EditTripPage() {
 
     try {
       const [hours, minutes] = data.time.split(':').map(Number);
-      
       const localDepartureDate = new Date(
         data.date.getFullYear(),
         data.date.getMonth(),
@@ -197,37 +188,35 @@ export default function EditTripPage() {
         hours,
         minutes
       );
-      console.log("[EditTripPage] Constructed localDepartureDate object:", localDepartureDate.toString());
+      const departureDateTimeISO_UTC = localDepartureDate.toISOString();
 
-      const departureDateTimeISO = localDepartureDate.toISOString();
-      console.log("[EditTripPage] Calculated departureDateTimeISO (UTC) for Supabase:", departureDateTimeISO);
-
-      const tripToUpdate = {
+      const tripDataForAction: TripFormData = {
         origin: data.origin,
         destination: data.destination,
-        departure_datetime: departureDateTimeISO,
+        departure_datetime: departureDateTimeISO_UTC,
         seats_available: data.seats,
-        // updated_at is removed as it should be handled by the trigger or db default
       };
       
-      const { error: updateError } = await supabase
-        .from('trips')
-        .update(tripToUpdate)
-        .eq('id', tripId)
-        .eq('driver_id', user.id);
+      const result = await updateTripAndHandleRequestsAction(tripId, tripDataForAction);
 
-      if (updateError) throw updateError;
-
-      toast({
-        title: "¡Viaje Actualizado!",
-        description: `El viaje de ${data.origin} a ${data.destination} ha sido actualizado.`,
-        variant: "default"
-      });
-      router.push("/dashboard/driver/manage-trips");
+      if (result.success) {
+        toast({
+          title: "¡Viaje Actualizado!",
+          description: result.message,
+          variant: "default"
+        });
+        router.push("/dashboard/driver/manage-trips");
+      } else {
+         toast({
+          title: "Error al Actualizar Viaje",
+          description: result.message,
+          variant: "destructive",
+        });
+      }
     } catch (e: any) {
       console.error("[EditTripPage] Error updating trip:", e);
       toast({
-        title: "Error al Actualizar Viaje",
+        title: "Error Inesperado al Actualizar Viaje",
         description: e.message || "Ocurrió un error desconocido al guardar los cambios.",
         variant: "destructive",
       });
@@ -282,6 +271,8 @@ export default function EditTripPage() {
         </div>
         <CardDescription>
           Modifica los detalles de tu viaje y guarda los cambios. Las horas se ingresan y muestran en tu zona horaria local.
+          <br />
+          <strong className="text-amber-700">Advertencia:</strong> Guardar cambios cancelará todas las solicitudes de pasajeros (pendientes y confirmadas) para este viaje. Los pasajeros deberán volver a solicitar unirse.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -424,7 +415,7 @@ export default function EditTripPage() {
                     <Input type="number" placeholder="ej: 2" {...field} onChange={e => field.onChange(parseInt(e.target.value,10) || 0)} min="1" max="10" disabled={isSubmitting}/>
                   </FormControl>
                   <FormDescription>
-                    Ingresa el número de asientos que ofreces para este viaje.
+                    Ingresa el número de asientos que ofreces para este viaje. Este número se ajustará si hay cancelaciones de reservas confirmadas.
                   </FormDescription>
                   <FormMessage />
                 </FormItem>
@@ -432,7 +423,7 @@ export default function EditTripPage() {
             />
             <div className="flex gap-2">
                 <Button type="submit" size="lg" disabled={isSubmitting || isLoadingLocations || isLoadingTripData}>
-                {isSubmitting ? "Guardando Cambios..." : "Guardar Cambios"}
+                {isSubmitting ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...</>) : "Guardar Cambios"}
                 </Button>
                 <Button type="button" variant="outline" size="lg" onClick={() => router.push("/dashboard/driver/manage-trips")} disabled={isSubmitting}>
                     Cancelar
@@ -444,4 +435,3 @@ export default function EditTripPage() {
     </Card>
   );
 }
-
