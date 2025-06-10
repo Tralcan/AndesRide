@@ -47,7 +47,6 @@ export async function updateTripAndHandleRequestsAction(
     // The formData.seats_available is the new total number of seats the driver wants to offer.
     // Existing 'pending' or 'confirmed' requests will be cancelled below, effectively freeing up those seats.
     // So, the value from the form is the final intended value for seats_available.
-    // The `updated_at` field on `trips` table is handled by its own `trigger_set_timestamp` if exists.
     const { error: updateTripError } = await supabase
       .from('trips')
       .update({
@@ -55,6 +54,7 @@ export async function updateTripAndHandleRequestsAction(
         destination: formData.destination,
         departure_datetime: formData.departure_datetime,
         seats_available: formData.seats_available, // Use the direct value from the form
+        updated_at: new Date().toISOString(), // Explicitly set updated_at for the trip
       })
       .eq('id', tripId);
 
@@ -66,11 +66,13 @@ export async function updateTripAndHandleRequestsAction(
     // 3. Cancel 'pending' and 'confirmed' passenger requests for this trip
     //    Mark them as 'cancelled_trip_modified'
     if (activePassengerRequestsExist) {
-      const { error: updateRequestsError } = await supabase
+      console.log(`[updateTripAction] Active passenger requests exist for trip ${tripId}. Attempting to cancel them.`);
+      const { error: updateRequestsError, count: updatedRequestsCount } = await supabase
         .from('trip_requests')
         .update({ status: 'cancelled_trip_modified', updated_at: new Date().toISOString() })
         .eq('trip_id', tripId)
-        .in('status', ['pending', 'confirmed']);
+        .in('status', ['pending', 'confirmed'])
+        .select(); // Adding select to get count or details for debugging if needed
 
       if (updateRequestsError) {
         console.error('[updateTripAction] Error cancelling passenger requests after trip edit:', updateRequestsError);
@@ -79,10 +81,13 @@ export async function updateTripAndHandleRequestsAction(
         revalidateRelevantPaths(tripId); // Revalidate even if this part fails, as trip data changed.
         return { success: true, message: `Viaje actualizado. Sin embargo, ocurrió un error al cancelar las solicitudes de pasajeros existentes: ${updateRequestsError.message}` };
       }
+      console.log(`[updateTripAction] Successfully cancelled ${updatedRequestsCount ?? 'unknown number of'} active passenger requests for trip ${tripId}.`);
+    } else {
+      console.log(`[updateTripAction] No active passenger requests found for trip ${tripId} to cancel.`);
     }
     
     revalidateRelevantPaths(tripId);
-    return { success: true, message: 'Viaje actualizado. Las solicitudes de pasajeros activas han sido canceladas; los pasajeros deberán volver a solicitar.' };
+    return { success: true, message: 'Viaje actualizado exitosamente. Las solicitudes de pasajeros activas (pendientes o confirmadas) para este viaje han sido canceladas. Los pasajeros necesitarán volver a solicitar si aún están interesados.' };
 
   } catch (error: any) {
     console.error('[updateTripAction] Error in updateTripAndHandleRequestsAction:', error);
