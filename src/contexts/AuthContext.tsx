@@ -43,7 +43,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [role, setRoleState] = useState<Role | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const { toast } = useToast();
+  const { toast: showToast } = useToast(); // Renamed to avoid conflict and clarify usage
 
   const fetchUserProfile = useCallback(async (supabaseUser: SupabaseUser): Promise<UserProfile | null> => {
     console.log("[AuthContext][fetchUserProfile] Fetching profile for user:", supabaseUser.id);
@@ -64,7 +64,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
          console.warn("[AuthContext][fetchUserProfile] No profile found (PGRST116) or RLS check failed for user:", supabaseUser.id);
          return null;
       }
-       toast({ title, description, variant: "destructive", duration: 7000 });
+       showToast({ title, description, variant: "destructive", duration: 7000 });
       return null;
     }
     if (data) {
@@ -78,7 +78,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
     console.log("[AuthContext][fetchUserProfile] No profile data returned (but no explicit error) for user:", supabaseUser.id);
     return null;
-  }, [supabase, toast]);
+  }, [supabase, showToast]);
 
   useEffect(() => {
     let isMounted = true;
@@ -164,7 +164,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     });
     if (error) {
       console.error("[AuthContext] Error during signInWithOAuth:", error);
-      toast({
+      showToast({
         title: "Error de inicio de sesión",
         description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
         variant: "destructive",
@@ -178,7 +178,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("[AuthContext] Error during signOut:", error);
-      toast({
+      showToast({
         title: "Error al cerrar sesión",
         description: error.message || "No se pudo cerrar la sesión. Inténtalo de nuevo.",
         variant: "destructive",
@@ -196,13 +196,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     console.log(`[AuthContext][setRole] Start. Attempting to set role to ${newRole} for user ${user?.id}.`);
     if (!user?.id || !newRole) {
       console.error("[AuthContext][setRole] Invalid parameters. UserID:", user?.id, "NewRole:", newRole);
-      toast({ title: "Error de Parámetros", description: "Usuario no autenticado o rol no válido.", variant: "destructive" });
+      showToast({ title: "Error de Parámetros", description: "Usuario no autenticado o rol no válido.", variant: "destructive" });
       return;
     }
 
-    const toastId = `setting-role-${user.id}-${Date.now()}`;
-    toast({
-      id: toastId,
+    const toastControl = showToast({
       title: "Actualizando Rol",
       description: `Estableciendo rol a ${newRole}... Por favor, espera.`,
       variant: "default"
@@ -239,7 +237,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (upsertError.message.includes("violates row-level security policy") || upsertError.message.includes("permission denied")) { 
             toastMessage = "Error de RLS: No tienes permiso para actualizar tu perfil. Revisa las políticas de INSERT/UPDATE en la tabla 'profiles'.";
         }
-        toast.update(toastId, {
+        toastControl.update({
           title: "Error al Guardar Rol",
           description: toastMessage,
           variant: "destructive",
@@ -264,7 +262,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return null;
       });
 
-      toast.update(toastId, {
+      toastControl.update({
         title: "Rol Establecido Correctamente",
         description: `Tu rol ha sido configurado como ${newRole}. Redirigiendo...`,
         variant: "default",
@@ -274,7 +272,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     } catch (error: any) {
       console.error("[AuthContext][setRole] EXCEPTION during setRole process:", error);
-      toast.update(toastId, {
+      toastControl.update({
         title: "Error Inesperado al Establecer Rol",
         description: error.message || "Ocurrió un error desconocido al actualizar tu rol.",
         variant: "destructive",
