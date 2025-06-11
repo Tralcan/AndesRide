@@ -62,7 +62,7 @@ export async function processNewTripAndNotifyPassengersAction(
     console.log('[PublishTripActions] Attempting to fetch ALL saved_routes from DB...');
     const { data: allSavedRoutesRaw, error: fetchAllSavedRoutesError } = await supabase
       .from('saved_routes')
-      .select('id, passenger_id, passenger_email, origin, destination, preferred_date'); // Asegúrate de seleccionar passenger_email
+      .select('id, passenger_id, passenger_email, origin, destination, preferred_date'); 
 
     if (fetchAllSavedRoutesError) {
       console.error('[PublishTripActions] Error fetching saved_routes:', JSON.stringify(fetchAllSavedRoutesError, null, 2));
@@ -131,14 +131,20 @@ export async function processNewTripAndNotifyPassengersAction(
     const notificationPromises: Promise<any>[] = [];
     
     for (const sr of finalMatchingSavedRoutes) {
-      // passenger_email ya está en sr y fue validado
       const passengerEmail = sr.passenger_email!; 
 
       const watchInput: WatchRouteInput = {
         passengerEmail: passengerEmail,
         origin: sr.origin, 
         destination: sr.destination, 
-        date: sr.preferred_date || newTripDateOnly, 
+        // La fecha para watchRoute debe ser la fecha preferida de la ruta guardada, o la fecha del nuevo viaje si la ruta guardada no tiene fecha.
+        // Pero como ya filtramos por `dateConditionMet` para que `sr.preferred_date` sea `newTripDateOnly` o `null`,
+        // y el `findMatchingTripsAction` dentro de `watchRoute` necesita una fecha específica (no puede ser null),
+        // debemos usar `newTripDateOnly` si `sr.preferred_date` es null, o directamente `sr.preferred_date` si lo tiene y coincide.
+        // Dado que el `dateConditionMet` asegura que `sr.preferred_date` (si no es null) es igual a `newTripDateOnly`,
+        // podemos usar `newTripDateOnly` consistentemente aquí, ya que es la fecha del viaje REAL que se está publicando.
+        // El flujo `watchRoute` luego usará esta fecha para buscar viajes.
+        date: newTripDateOnly,
       };
       console.log(`[PublishTripActions] Calling watchRoute for passenger ${passengerEmail} (Route ID: ${sr.id}) with input:`, JSON.stringify(watchInput, null, 2));
       
@@ -150,6 +156,7 @@ export async function processNewTripAndNotifyPassengersAction(
           })
           .catch(error => {
             console.error(`[PublishTripActions] watchRoute FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, error.message ? error.message : JSON.stringify(error, null, 2));
+            // Incluso si watchRoute falla, queremos registrar el intento y el error.
             return { email: passengerEmail, saved_route_id: sr.id, success: false, error: error.message || 'Unknown error from watchRoute' };
           })
       );
@@ -174,11 +181,13 @@ export async function processNewTripAndNotifyPassengersAction(
 
   } catch (error: any) 
   {
+    // Este catch es para errores en la lógica de obtención/filtrado de rutas o al preparar las llamadas a watchRoute.
     console.error('[PublishTripActions] Catch-all error during notification processing:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
     return {
-      success: true, 
+      success: true, // El viaje se publicó, pero la notificación falló.
       tripId: newTrip.id,
-      message: `Viaje publicado con ID: ${newTrip.id}. Ocurrió un error inesperado durante el proceso de notificación: ${error.message}`,
+      message: `Viaje publicado con ID: ${newTrip.id}. Ocurrió un error inesperado durante el proceso de notificación: ${error.message}. Por favor, revisa los logs del servidor.`,
     };
   }
 }
+    
