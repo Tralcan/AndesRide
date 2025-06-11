@@ -68,7 +68,7 @@ export async function addSavedRouteAction(
 
   const dataWithAuthenticatedUserEmail = {
     ...routeData,
-    passenger_email: user.email,
+    passenger_email: user.email, // Asegurar que el email del usuario autenticado se usa
   };
 
   const validatedData = SavedRouteSchemaForDB.safeParse(dataWithAuthenticatedUserEmail);
@@ -133,7 +133,7 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
       .from('saved_routes')
       .delete()
       .eq('id', routeId)
-      .eq('passenger_id', user.id);
+      .eq('passenger_id', user.id); // Ensure user can only delete their own routes (even with RLS)
 
     if (error) {
       console.error('[deleteSavedRouteAction] Error deleting saved route from DB:', error);
@@ -152,6 +152,7 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
   }
 }
 
+// Esta interfaz es para la salida de la función de búsqueda
 export interface PublishedTripDetails {
   tripId: string;
   driverEmail: string | null;
@@ -162,7 +163,8 @@ export interface PublishedTripDetails {
   seatsAvailable: number;
 }
 
-const FindPublishedMatchingTripsInputSchema = z.object({
+// Este schema es para la entrada de la función de búsqueda
+export const FindPublishedMatchingTripsInputSchema = z.object({
   origin: z.string().describe("La ubicación de origen del viaje deseado."),
   destination: z.string().describe("La ubicación de destino del viaje deseado."),
   searchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe estar en formato YYYY-MM-DD.").describe("La fecha deseada para el viaje (YYYY-MM-DD)."),
@@ -218,7 +220,7 @@ export async function findPublishedMatchingTripsAction(
       };
     });
 
-    console.log(`[findPublishedMatchingTripsAction] Mapped ${results.length} trips from RPC. First mapped result (if any):`, results[0] ? JSON.stringify(results[0], null, 2) : "N/A");
+    console.log(`[findPublishedMatchingTripsAction] Mapped ${results.length} trips from RPC. First mapped result (if any):`, results.length > 0 ? JSON.stringify(results[0], null, 2) : "N/A");
     return results;
 
   } catch (e: any) {
