@@ -16,6 +16,7 @@ const SavedRouteSchemaForDB = z.object({
 export interface SavedRouteFromDB {
   id: string;
   passenger_id: string;
+  passenger_email: string | null; // Nueva columna
   origin: string;
   destination: string;
   preferred_date: string | null; // ISO string YYYY-MM-DD
@@ -35,7 +36,7 @@ export async function getSavedRoutesAction(): Promise<{ success: boolean; routes
     console.log(`[getSavedRoutesAction] Fetching routes for passenger_id: ${user.id}`);
     const { data, error } = await supabase
       .from('saved_routes')
-      .select('*')
+      .select('*') // Incluye la nueva columna passenger_email
       .eq('passenger_id', user.id)
       .order('created_at', { ascending: false });
 
@@ -58,11 +59,11 @@ export async function addSavedRouteAction(
   const supabase = createServerActionClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-  if (authError || !user) {
-    console.error('[addSavedRouteAction] Auth error:', authError);
-    return { success: false, error: 'Usuario no autenticado.' };
+  if (authError || !user || !user.email) { // Asegurarse de que el email exista
+    console.error('[addSavedRouteAction] Auth error or user email missing:', authError, user);
+    return { success: false, error: 'Usuario no autenticado o email no disponible.' };
   }
-  console.log(`[addSavedRouteAction] Authenticated user: ${user.id}`);
+  console.log(`[addSavedRouteAction] Authenticated user: ${user.id}, email: ${user.email}`);
 
   const validatedData = SavedRouteSchemaForDB.safeParse(routeData);
   if (!validatedData.success) {
@@ -74,6 +75,7 @@ export async function addSavedRouteAction(
 
   const dataToInsert = {
     passenger_id: user.id,
+    passenger_email: user.email, // Guardar el email del pasajero
     origin: validatedData.data.origin,
     destination: validatedData.data.destination,
     preferred_date: validatedData.data.preferred_date, // Puede ser null
@@ -175,64 +177,34 @@ export async function findPublishedMatchingTripsAction(
   }
 
   try {
-    let query = supabase
-      .from('trips')
-      .select(`
-        id,
-        origin,
-        destination,
-        departure_datetime,
-        seats_available,
-        driver_id,
-        driver_profile:profiles (
-          full_name,
-          users ( email )
-        )
-      `)
-      .eq('origin', input.origin)
-      .eq('destination', input.destination)
-      .gt('seats_available', 0) // Solo viajes con asientos
-      .gt('departure_datetime', new Date().toISOString()); // Solo viajes futuros
+    // Usamos la función RPC 'search_trips_with_driver_info' que ya existe y funciona.
+    // Esta función ya debe manejar la obtención de la información del conductor, incluyendo el email si está disponible.
+    const rpcParams = {
+      p_origin: input.origin,
+      p_destination: input.destination,
+      p_search_date_str: input.searchDate,
+    };
+    console.log('[findPublishedMatchingTripsAction] Calling RPC search_trips_with_driver_info with params:', rpcParams);
 
-    // Filtrar por fecha: el viaje debe ocurrir en el día de searchDate (en UTC)
-    // Construir el rango de inicio y fin para el día de searchDate en UTC
-    const startDateUTC = new Date(`${input.searchDate}T00:00:00.000Z`);
-    const endDateUTC = new Date(`${input.searchDate}T23:59:59.999Z`);
-
-    console.log(`[findPublishedMatchingTripsAction] Search date range UTC: ${startDateUTC.toISOString()} to ${endDateUTC.toISOString()}`);
+    const { data: tripsData, error: rpcError } = await supabase.rpc('search_trips_with_driver_info', rpcParams);
     
-    query = query.gte('departure_datetime', startDateUTC.toISOString());
-    query = query.lte('departure_datetime', endDateUTC.toISOString());
-    
-    const { data: tripsData, error: tripsError } = await query;
-
-    if (tripsError) {
-      console.error('[findPublishedMatchingTripsAction] Error fetching trips:', JSON.stringify(tripsError, null, 2));
+    if (rpcError) {
+      console.error('[findPublishedMatchingTripsAction] Error calling RPC search_trips_with_driver_info:', JSON.stringify(rpcError, null, 2));
       return [];
     }
 
     if (!tripsData || tripsData.length === 0) {
-      console.log('[findPublishedMatchingTripsAction] No matching trips found for:', input);
+      console.log('[findPublishedMatchingTripsAction] No matching trips found by RPC for:', input);
       return [];
     }
 
-    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips before mapping.`);
+    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC.`);
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
-      let driverEmail: string | null = null;
-      // Acceder al email del conductor a través de la relación anidada
-      if (trip.driver_profile && trip.driver_profile.users && trip.driver_profile.users.email) {
-        driverEmail = trip.driver_profile.users.email;
-      } else if (trip.driver_profile && Array.isArray(trip.driver_profile.users) && trip.driver_profile.users.length > 0 && trip.driver_profile.users[0].email) {
-        // Caso para cuando Supabase devuelve 'users' como un array debido a RLS o estructura
-        driverEmail = trip.driver_profile.users[0].email;
-      }
-
-
       return {
-        tripId: trip.id,
-        driverEmail: driverEmail,
-        driverFullName: trip.driver_profile?.full_name || 'Conductor Anónimo',
+        tripId: trip.id, // Asumiendo que la RPC devuelve 'id' como tripId
+        driverEmail: trip.driver_email || null, // Asumiendo que la RPC devuelve 'driver_email'
+        driverFullName: trip.driver_name || 'Conductor Anónimo', // Asumiendo que la RPC devuelve 'driver_name'
         departureDateTime: trip.departure_datetime,
         origin: trip.origin,
         destination: trip.destination,
@@ -240,7 +212,7 @@ export async function findPublishedMatchingTripsAction(
       };
     });
     
-    console.log(`[findPublishedMatchingTripsAction] Mapped ${results.length} trips. First result (if any):`, results[0]);
+    console.log(`[findPublishedMatchingTripsAction] Mapped ${results.length} trips from RPC. First result (if any):`, results[0]);
     return results;
 
   } catch (e: any) {
@@ -248,4 +220,3 @@ export async function findPublishedMatchingTripsAction(
     return [];
   }
 }
-

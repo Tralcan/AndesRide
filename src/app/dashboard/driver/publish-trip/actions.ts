@@ -15,15 +15,13 @@ interface NewTripData {
   seats_available: number;
 }
 
-interface BasicSavedRoute {
+interface BasicSavedRouteForNotification {
   id: string;
   passenger_id: string;
+  passenger_email: string | null; // Columna clave para la notificación
   origin: string;
   destination: string;
   preferred_date: string | null; // YYYY-MM-DD or null
-  // Asegúrate de que estos campos coincidan con tu tabla saved_routes
-  created_at?: string; 
-  // otros_campos?: any;
 }
 
 export async function processNewTripAndNotifyPassengersAction(
@@ -39,8 +37,6 @@ export async function processNewTripAndNotifyPassengersAction(
   }
   console.log(`[PublishTripActions] Driver User ID performing action: ${driverUser.id}`);
 
-
-  // 1. Insertar el nuevo viaje
   const { data: newTrip, error: insertTripError } = await supabase
     .from('trips')
     .insert(tripData)
@@ -56,119 +52,93 @@ export async function processNewTripAndNotifyPassengersAction(
   }
   console.log('[PublishTripActions] New trip inserted successfully:', JSON.stringify(newTrip, null, 2));
   
-  console.log(`[PublishTripActions] New trip details for matching: ID=${newTrip.id}, Origin=${newTrip.origin}, Dest=${newTrip.destination}, DateTime=${newTrip.departure_datetime}`);
-  
-  const newTripDateOnly = format(parseISO(newTrip.departure_datetime), 'yyyy-MM-dd');
-  console.log(`[PublishTripActions] Formatted newTripDateOnly for matching: ${newTripDateOnly}`);
-
   revalidatePath('/dashboard/driver/manage-trips');
   revalidatePath('/dashboard/passenger/search-trips'); 
 
-  // 2. Encontrar rutas guardadas coincidentes y notificar a los pasajeros
   try {
-    console.log('[PublishTripActions] Attempting to fetch ALL saved_routes from DB for client-side filtering...');
-    // Simplest possible query to fetch all saved routes
+    const newTripDateOnly = format(parseISO(newTrip.departure_datetime), 'yyyy-MM-dd');
+    console.log(`[PublishTripActions] New trip details for matching: ID=${newTrip.id}, Origin=${newTrip.origin}, Dest=${newTrip.destination}, DateTime=${newTrip.departure_datetime}, FormattedDateOnly=${newTripDateOnly}`);
+
+    console.log('[PublishTripActions] Attempting to fetch ALL saved_routes from DB...');
     const { data: allSavedRoutesRaw, error: fetchAllSavedRoutesError } = await supabase
       .from('saved_routes')
-      .select('*'); // Fetch all columns for debugging
+      .select('id, passenger_id, passenger_email, origin, destination, preferred_date'); // Asegúrate de seleccionar passenger_email
 
     if (fetchAllSavedRoutesError) {
-      console.error('[PublishTripActions] supabase.from(\'saved_routes\').select(\'*\') FAILED. Error object:', JSON.stringify(fetchAllSavedRoutesError, null, 2));
-      console.error(`[PublishTripActions] Error details: code=${fetchAllSavedRoutesError.code}, message=${fetchAllSavedRoutesError.message}, details=${fetchAllSavedRoutesError.details}, hint=${fetchAllSavedRoutesError.hint}`);
-      // Si es un error RLS, el código podría ser 42501 (permission denied) o el mensaje indicarlo.
+      console.error('[PublishTripActions] Error fetching saved_routes:', JSON.stringify(fetchAllSavedRoutesError, null, 2));
       return {
         success: true, 
         tripId: newTrip.id,
-        message: `Viaje publicado con ID: ${newTrip.id}. Sin embargo, ocurrió un error GRAVE al buscar pasajeros interesados: ${fetchAllSavedRoutesError.message}. Revisa las políticas RLS de 'saved_routes'.`,
+        message: `Viaje publicado con ID: ${newTrip.id}. Error al buscar pasajeros interesados: ${fetchAllSavedRoutesError.message}. Revisa los logs y RLS de 'saved_routes'.`,
       };
     }
     
     console.log(`[PublishTripActions] ALL saved_routes fetched from DB (before any filtering): ${allSavedRoutesRaw?.length || 0} routes.`);
     if (allSavedRoutesRaw && allSavedRoutesRaw.length > 0) {
       console.log('[PublishTripActions] First raw saved route (if any):', JSON.stringify(allSavedRoutesRaw[0], null, 2));
-    } else if (allSavedRoutesRaw === null) {
-      console.log('[PublishTripActions] fetchAllSavedRoutes returned NULL. This usually means RLS prevented any rows from being returned, or the table is truly empty.');
-    } else { // allSavedRoutesRaw is an empty array []
-      console.log('[PublishTripActions] fetchAllSavedRoutes returned an EMPTY ARRAY. The table might be empty or RLS filtered everything out.');
     }
 
-
     if (!allSavedRoutesRaw || allSavedRoutesRaw.length === 0) {
-      console.log('[PublishTripActions] No saved_routes data returned from Supabase. Check RLS on saved_routes or if the table is empty.');
+      console.log('[PublishTripActions] No saved_routes data returned from Supabase. Check RLS or if the table is empty.');
       return {
         success: true,
         tripId: newTrip.id,
-        message: `Viaje publicado con ID: ${newTrip.id}. No se encontraron rutas guardadas en la base de datos (o RLS impidió el acceso).`,
+        message: `Viaje publicado con ID: ${newTrip.id}. No se encontraron rutas guardadas en la base de datos.`,
       };
     }
 
     const normalizedNewTripOrigin = newTrip.origin.trim().toLowerCase();
     const normalizedNewTripDestination = newTrip.destination.trim().toLowerCase();
-    console.log(`[PublishTripActions] Normalized newTrip origin: "${normalizedNewTripOrigin}", destination: "${normalizedNewTripDestination}"`);
+    console.log(`[PublishTripActions] Normalized newTrip: Origin='${normalizedNewTripOrigin}', Dest='${normalizedNewTripDestination}', Date='${newTripDateOnly}'`);
 
-    const finalMatchingSavedRoutes: BasicSavedRoute[] = [];
-    for (const sr of allSavedRoutesRaw as BasicSavedRoute[]) {
-        console.log(`[PublishTripActions] --- Evaluating saved route ID ${sr.id} (Passenger: ${sr.passenger_id}) ---`);
+    const finalMatchingSavedRoutes: BasicSavedRouteForNotification[] = [];
+    for (const sr of allSavedRoutesRaw as BasicSavedRouteForNotification[]) {
+        console.log(`[PublishTripActions] --- Evaluating saved route ID ${sr.id} (Passenger: ${sr.passenger_id}, Email: ${sr.passenger_email}) ---`);
         console.log(`  Raw SR: Origin='${sr.origin}', Dest='${sr.destination}', PrefDate='${sr.preferred_date}'`);
 
         const normalizedSavedRouteOrigin = sr.origin ? sr.origin.trim().toLowerCase() : "";
         const normalizedSavedRouteDestination = sr.destination ? sr.destination.trim().toLowerCase() : "";
         
-        console.log(`  Normalized SR: Origin='${normalizedSavedRouteOrigin}', Dest='${normalizedSavedRouteDestination}'`);
-        console.log(`  Normalized NT: Origin='${normalizedNewTripOrigin}', Dest='${normalizedNewTripDestination}', Date='${newTripDateOnly}'`);
-
         const originMatch = normalizedSavedRouteOrigin === normalizedNewTripOrigin;
         const destinationMatch = normalizedSavedRouteDestination === normalizedNewTripDestination;
-        // Ensure sr.preferred_date is compared correctly (it can be null or a string 'YYYY-MM-DD')
         const dateConditionMet = sr.preferred_date === null || sr.preferred_date === '' || sr.preferred_date === newTripDateOnly;
         
-        console.log(`  Match Results: OriginMatch=${originMatch}, DestMatch=${destinationMatch}, DateConditionMet=${dateConditionMet} (SR_PrefDate='${sr.preferred_date}', NT_Date='${newTripDateOnly}')`);
+        console.log(`  Match Results: OriginMatch=${originMatch}, DestMatch=${destinationMatch}, DateConditionMet=${dateConditionMet}`);
 
         if (originMatch && destinationMatch && dateConditionMet) {
-            finalMatchingSavedRoutes.push(sr);
-            console.log(`  --> Route ID ${sr.id} IS A MATCH.`);
+            if (sr.passenger_email && sr.passenger_email.trim() !== '') {
+                finalMatchingSavedRoutes.push(sr);
+                console.log(`  --> Route ID ${sr.id} IS A MATCH with valid email.`);
+            } else {
+                console.warn(`  --> Route ID ${sr.id} MATCHES but passenger_email is missing or empty. Skipping notification.`);
+            }
         } else {
             console.log(`  --> Route ID ${sr.id} is NOT a match.`);
-            if (!originMatch) console.log(`      Reason: Origin mismatch.`);
-            if (!destinationMatch) console.log(`      Reason: Destination mismatch.`);
-            if (!dateConditionMet) console.log(`      Reason: Date condition mismatch.`);
         }
     }
     
-    console.log(`[PublishTripActions] Found ${finalMatchingSavedRoutes.length} fully matching saved routes AFTER detailed JavaScript filtering.`);
+    console.log(`[PublishTripActions] Found ${finalMatchingSavedRoutes.length} fully matching saved routes with email AFTER detailed JavaScript filtering.`);
 
     if (finalMatchingSavedRoutes.length === 0) {
-      console.log('[PublishTripActions] No saved routes fully matched after detailed JavaScript filtering.');
+      console.log('[PublishTripActions] No saved routes fully matched (with email and all criteria) after filtering.');
       return {
         success: true,
         tripId: newTrip.id,
-        message: `Viaje publicado con ID: ${newTrip.id}. No se encontraron pasajeros con rutas guardadas que coincidan completamente (origen, destino, fecha) tras la verificación detallada.`,
+        message: `Viaje publicado con ID: ${newTrip.id}. No se encontraron pasajeros con rutas guardadas y email válido que coincidan completamente.`,
       };
     }
 
     const notificationPromises: Promise<any>[] = [];
     
     for (const sr of finalMatchingSavedRoutes) {
-      console.log(`[PublishTripActions] Processing matched saved route ID ${sr.id} for passenger_id: ${sr.passenger_id}`);
-      const { data: profileData, error: profileError } = await supabase
-        .from('profiles')
-        .select('email') 
-        .eq('id', sr.passenger_id) 
-        .single();
-
-      if (profileError || !profileData?.email) {
-        console.warn(`[PublishTripActions] Could not fetch email for passenger_id ${sr.passenger_id} from profiles table. Error: ${profileError ? JSON.stringify(profileError, null, 2) : 'No email in profileData'}. Skipping notification for this route.`);
-        continue; 
-      }
-      
-      const passengerEmail = profileData.email;
-      console.log(`[PublishTripActions] Fetched email "${passengerEmail}" for passenger_id ${sr.passenger_id}.`);
+      // passenger_email ya está en sr y fue validado
+      const passengerEmail = sr.passenger_email!; 
 
       const watchInput: WatchRouteInput = {
         passengerEmail: passengerEmail,
-        origin: sr.origin, // Usar el origin original de la ruta guardada para el input del flow
-        destination: sr.destination, // Usar el destination original
-        date: sr.preferred_date || newTripDateOnly, // Usar la fecha guardada o la del nuevo viaje
+        origin: sr.origin, 
+        destination: sr.destination, 
+        date: sr.preferred_date || newTripDateOnly, 
       };
       console.log(`[PublishTripActions] Calling watchRoute for passenger ${passengerEmail} (Route ID: ${sr.id}) with input:`, JSON.stringify(watchInput, null, 2));
       
@@ -202,15 +172,13 @@ export async function processNewTripAndNotifyPassengersAction(
       notificationResults: fulfilledResults,
     };
 
-  } catch (error: any) // Este catch es para errores inesperados en el proceso general de notificación
+  } catch (error: any) 
   {
     console.error('[PublishTripActions] Catch-all error during notification processing:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
     return {
-      success: true, // El viaje se publicó, pero la notificación falló catastróficamente.
+      success: true, 
       tripId: newTrip.id,
       message: `Viaje publicado con ID: ${newTrip.id}. Ocurrió un error inesperado durante el proceso de notificación: ${error.message}`,
     };
   }
 }
-
-    
