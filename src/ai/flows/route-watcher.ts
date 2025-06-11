@@ -59,9 +59,9 @@ const findMatchingTripsTool = ai.defineTool(
   async (toolInput: FindPublishedMatchingTripsInput): Promise<PublishedTripDetails[]> => {
     console.log('[findMatchingTripsTool] Tool called with input (from LLM):', JSON.stringify(toolInput, null, 2));
     try {
-      // La acción `findPublishedMatchingTripsAction` ya tiene su propio logging detallado.
+      console.log('[findMatchingTripsTool] Input to findPublishedMatchingTripsAction (from tool):', JSON.stringify(toolInput, null, 2));
       const matchingTrips = await findPublishedMatchingTripsAction(toolInput);
-      console.log(`[findMatchingTripsTool] Output from findPublishedMatchingTripsAction (to LLM): ${matchingTrips.length} trips. Data (first 500 chars):`, JSON.stringify(matchingTrips, null, 2).substring(0,500));
+      console.log(`[findMatchingTripsTool] Output from findPublishedMatchingTripsAction (in tool): ${matchingTrips.length} trips. Data (first 500 chars):`, JSON.stringify(matchingTrips, null, 2).substring(0,500));
       return matchingTrips;
     } catch (error: any) {
       console.error('[findMatchingTripsTool] Error calling findPublishedMatchingTripsAction:', error.message ? error.message : error);
@@ -103,32 +103,35 @@ const prompt = ai.definePrompt({
   - Correo del Pasajero: {{{passengerEmail}}}
   - Origen Preferido: {{{origin}}}
   - Destino Preferido: {{{destination}}}
-  - Fecha Preferida: {{{date}}} (Formato YYYY-MM-DD. Esta es la fecha que el pasajero guardó.)
+  - Fecha Preferida: {{{date}}} (Formato YYYY-MM-DD. Esta es la fecha que el pasajero guardó y la que debes usar para la búsqueda.)
 
-  Proceso de Decisión:
-  1. Usa la herramienta 'findMatchingTripsTool' para buscar viajes *publicados y disponibles* que coincidan con el origen, destino y fecha preferidos por el pasajero.
-     Para el parámetro 'searchDate' de la herramienta 'findMatchingTripsTool', DEBES usar el valor exacto de 'Fecha Preferida' ({{{date}}}) del input.
-     Para los parámetros 'origin' y 'destination' de la herramienta, DEBES usar los valores exactos de 'Origen Preferido' ({{{origin}}}) y 'Destino Preferido' ({{{destination}}}) del input.
-  2. Si la herramienta 'findMatchingTripsTool' devuelve uno o más viajes coincidentes:
-     a. Selecciona el primer viaje de la lista como la coincidencia.
-     b. Construye un mensaje de notificación claro para el pasajero. El mensaje DEBE incluir:
-        - Origen del viaje encontrado.
-        - Destino del viaje encontrado.
-        - Fecha y Hora de salida del viaje encontrado (formatea departureDateTime a un formato legible como "dd MMM yyyy a las HH:mm").
-        - Nombre del conductor (driverFullName) si está disponible, o "Conductor Anónimo".
-        - Correo electrónico del conductor (driverEmail) si está disponible.
-        - Número de asientos disponibles.
-     c. Usa la herramienta 'sendNotificationTool' para enviar este mensaje al 'passengerEmail' del input.
-     d. Establece 'routeMatchFound' en true.
-     e. Establece 'notificationSent' según el resultado de la herramienta 'sendNotificationTool'.
-     f. En el campo 'message' del output, resume la acción (ej: "Se encontró una coincidencia para tu ruta de {{{origin}}} a {{{destination}}} y se te ha notificado. Detalles del viaje: ...").
-  3. Si la herramienta 'findMatchingTripsTool' NO devuelve ningún viaje coincidente:
-     a. Establece 'routeMatchFound' en false.
-     b. Establece 'notificationSent' en false.
-     c. En el campo 'message' del output, indica claramente que no se encontraron viajes publicados coincidentes para la ruta (Origen: {{{origin}}}, Destino: {{{destination}}}, Fecha: {{{date}}}) y que se seguirá monitoreando. Por ejemplo: "No se encontraron viajes publicados para tu ruta de {{{origin}}} a {{{destination}}} en la fecha {{{date}}}. Seguiremos vigilando."
+  Proceso de Decisión OBLIGATORIO:
+  1. Tu PRIMERA ACCIÓN debe ser invocar la herramienta 'findMatchingTripsTool'. ES ESENCIAL que uses esta herramienta para buscar viajes *publicados y disponibles* que coincidan EXACTAMENTE con el origen, destino y fecha preferidos por el pasajero.
+     - Para el parámetro 'origin' de la herramienta, DEBES usar el valor '{{{origin}}}'.
+     - Para el parámetro 'destination' de la herramienta, DEBES usar el valor '{{{destination}}}'.
+     - Para el parámetro 'searchDate' de la herramienta 'findMatchingTripsTool', DEBES usar el valor exacto de 'Fecha Preferida' ({{{date}}}) del input. NO uses ninguna otra fecha.
+
+  2. Una vez que tengas el resultado de 'findMatchingTripsTool':
+     a. Si la herramienta 'findMatchingTripsTool' devuelve uno o más viajes coincidentes (es decir, el array de resultados no está vacío):
+        i. Selecciona el primer viaje de la lista como la coincidencia.
+        ii. Construye un mensaje de notificación claro para el pasajero. El mensaje DEBE incluir:
+           - Origen del viaje encontrado.
+           - Destino del viaje encontrado.
+           - Fecha y Hora de salida del viaje encontrado (formatea departureDateTime a un formato legible como "dd MMM yyyy a las HH:mm").
+           - Nombre del conductor (driverFullName) si está disponible, o "Conductor Anónimo".
+           - Correo electrónico del conductor (driverEmail) si está disponible.
+           - Número de asientos disponibles.
+        iii. Usa la herramienta 'sendNotificationTool' para enviar este mensaje al 'passengerEmail' ({{{passengerEmail}}}) del input.
+        iv. Establece 'routeMatchFound' en true.
+        v. Establece 'notificationSent' según el resultado de la herramienta 'sendNotificationTool'.
+        vi. En el campo 'message' del output, resume la acción (ej: "Se encontró una coincidencia para tu ruta de {{{origin}}} a {{{destination}}} en la fecha {{{date}}} y se te ha notificado. Detalles del viaje: ...").
+
+     b. Si la herramienta 'findMatchingTripsTool' NO devuelve ningún viaje coincidente (es decir, el array de resultados está vacío):
+        i. Establece 'routeMatchFound' en false.
+        ii. Establece 'notificationSent' en false.
+        iii. En el campo 'message' del output, indica claramente que no se encontraron viajes publicados coincidentes para la ruta (Origen: {{{origin}}}, Destino: {{{destination}}}, Fecha: {{{date}}}) y que se seguirá monitoreando. Por ejemplo: "No se encontraron viajes publicados para tu ruta de {{{origin}}} a {{{destination}}} en la fecha {{{date}}}. Seguiremos vigilando."
 
   No inventes viajes. Basa tu decisión EXCLUSIVAMENTE en los resultados de 'findMatchingTripsTool'.
-  Si el campo 'driverEmail' del input está vacío, ignóralo; la información del conductor vendrá de la herramienta 'findMatchingTripsTool'.
   Asegúrate de que la salida sea un objeto JSON válido que cumpla con WatchRouteOutputSchema.
 `,
   config: {
