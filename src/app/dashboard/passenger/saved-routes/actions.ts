@@ -11,7 +11,7 @@ const SavedRouteSchemaForDB = z.object({
   origin: z.string().min(1, "El origen es requerido."),
   destination: z.string().min(1, "El destino es requerido."),
   preferred_date: z.string().nullable().optional(), // Fecha como ISO string YYYY-MM-DD o null
-  passenger_email: z.string().email("Email del pasajero inválido").optional().nullable(), // Añadido para el email
+  passenger_email: z.string().email("Email del pasajero inválido").optional().nullable(),
 });
 
 export interface SavedRouteFromDB {
@@ -66,7 +66,6 @@ export async function addSavedRouteAction(
   }
   console.log(`[addSavedRouteAction] Authenticated user: ${user.id}, email: ${user.email}`);
 
-  // Asegurarse que el email del usuario autenticado se use para passenger_email
   const dataWithAuthenticatedUserEmail = {
     ...routeData,
     passenger_email: user.email,
@@ -82,7 +81,7 @@ export async function addSavedRouteAction(
 
   const dataToInsert = {
     passenger_id: user.id,
-    passenger_email: validatedData.data.passenger_email, // Usar el email validado
+    passenger_email: validatedData.data.passenger_email,
     origin: validatedData.data.origin,
     destination: validatedData.data.destination,
     preferred_date: validatedData.data.preferred_date,
@@ -153,7 +152,6 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
   }
 }
 
-// Nueva acción para buscar viajes publicados que coincidan
 export interface PublishedTripDetails {
   tripId: string;
   driverEmail: string | null;
@@ -178,9 +176,12 @@ export async function findPublishedMatchingTripsAction(
   console.log(`[findPublishedMatchingTripsAction] Received input: origin="${input.origin}", destination="${input.destination}", searchDate="${input.searchDate}"`);
   const supabase = createServerActionClient();
 
+  // Aunque la herramienta podría ser llamada por el sistema (LLM), verificamos si hay un usuario autenticado para logging
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    console.warn('[findPublishedMatchingTripsAction] No authenticated user for this action, but proceeding as it might be called by system (Genkit tool).');
+    console.warn('[findPublishedMatchingTripsAction] No authenticated user for this action call, but proceeding (tool context).');
+  } else {
+    console.log(`[findPublishedMatchingTripsAction] Action called by or in context of user: ${user.id}`);
   }
 
   try {
@@ -195,7 +196,7 @@ export async function findPublishedMatchingTripsAction(
 
     if (rpcError) {
       console.error('[findPublishedMatchingTripsAction] Error calling RPC search_trips_with_driver_info:', JSON.stringify(rpcError, null, 2));
-      return [];
+      return []; // Devuelve vacío en caso de error para que el LLM sepa que no hay coincidencias
     }
 
     if (!tripsData || tripsData.length === 0) {
@@ -203,11 +204,11 @@ export async function findPublishedMatchingTripsAction(
       return [];
     }
 
-    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. First trip raw data (if any):`, tripsData[0] ? JSON.stringify(tripsData[0], null, 2) : "N/A");
+    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. Raw data (first 1000 chars):`, JSON.stringify(tripsData, null, 2).substring(0, 1000));
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
       return {
-        tripId: trip.id,
+        tripId: trip.id, // Asegurarse que el RPC devuelve 'id' para el tripId
         driverEmail: trip.driver_email || null,
         driverFullName: trip.driver_name || 'Conductor Anónimo',
         departureDateTime: trip.departure_datetime,
@@ -221,7 +222,8 @@ export async function findPublishedMatchingTripsAction(
     return results;
 
   } catch (e: any) {
-    console.error('[findPublishedMatchingTripsAction] Exception:', e);
-    return [];
+    console.error('[findPublishedMatchingTripsAction] Exception caught in findPublishedMatchingTripsAction:', e);
+    return []; // Devuelve vacío en caso de excepción
   }
 }
+

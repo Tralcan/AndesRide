@@ -36,7 +36,7 @@ export type WatchRouteOutput = z.infer<typeof WatchRouteOutputSchema>;
 const FindMatchingTripsInputToolSchema = z.object({
   origin: z.string().describe("La ubicación de origen para buscar viajes."),
   destination: z.string().describe("La ubicación de destino para buscar viajes."),
-  searchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("La fecha para buscar viajes (formato YYYY-MM-DD)."),
+  searchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe("La fecha para buscar viajes (formato YYYY-MM-DD). Este DEBE ser el valor del campo 'date' del input principal del flujo."),
 });
 
 const FindMatchingTripsOutputToolSchema = z.array(z.object({
@@ -52,30 +52,27 @@ const FindMatchingTripsOutputToolSchema = z.array(z.object({
 const findMatchingTripsTool = ai.defineTool(
   {
     name: 'findMatchingTripsTool',
-    description: 'Busca viajes publicados REALES en la base de datos que coincidan con un origen, destino y fecha específicos.',
+    description: 'Busca viajes publicados REALES en la base de datos que coincidan con un origen, destino y fecha específicos. Usa el valor del campo "date" del input del flujo como "searchDate" para esta herramienta.',
     inputSchema: FindMatchingTripsInputToolSchema,
     outputSchema: FindMatchingTripsOutputToolSchema,
   },
-  async (input: FindPublishedMatchingTripsInput): Promise<PublishedTripDetails[]> => {
-    console.log('[findMatchingTripsTool] Tool called with input:', JSON.stringify(input, null, 2)); // Loguear el input exacto que recibe la herramienta
+  async (toolInput: FindPublishedMatchingTripsInput): Promise<PublishedTripDetails[]> => {
+    console.log('[findMatchingTripsTool] Tool called with input (from LLM):', JSON.stringify(toolInput, null, 2));
     try {
-      const matchingTrips = await findPublishedMatchingTripsAction({
-        origin: input.origin,
-        destination: input.destination,
-        searchDate: input.searchDate,
-      });
-      console.log(`[findMatchingTripsTool] Trips found by findPublishedMatchingTripsAction: ${matchingTrips.length} trips. Data:`, JSON.stringify(matchingTrips, null, 2));
+      // La acción `findPublishedMatchingTripsAction` ya tiene su propio logging detallado.
+      const matchingTrips = await findPublishedMatchingTripsAction(toolInput);
+      console.log(`[findMatchingTripsTool] Output from findPublishedMatchingTripsAction (to LLM): ${matchingTrips.length} trips. Data (first 500 chars):`, JSON.stringify(matchingTrips, null, 2).substring(0,500));
       return matchingTrips;
-    } catch (error) {
-      console.error('[findMatchingTripsTool] Error calling findPublishedMatchingTripsAction:', error);
+    } catch (error: any) {
+      console.error('[findMatchingTripsTool] Error calling findPublishedMatchingTripsAction:', error.message ? error.message : error);
       return []; // Devuelve un array vacío en caso de error para que el LLM sepa que no hay coincidencias.
     }
   }
 );
 
 // Herramienta para enviar notificaciones por correo electrónico
-const sendNotification = ai.defineTool({
-  name: 'sendNotification',
+const sendNotificationTool = ai.defineTool({ // Renombrado para claridad
+  name: 'sendNotificationTool',
   description: 'Envía una notificación por correo electrónico al pasajero sobre un viaje REAL Y PUBLICADO que coincide con su ruta guardada.',
   inputSchema: z.object({
     passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
@@ -84,7 +81,7 @@ const sendNotification = ai.defineTool({
   outputSchema: z.boolean().describe('Si la notificación se envió con éxito.'),
 },
 async (input) => {
-  console.log(`[sendNotification Tool] Enviando notificación a ${input.passengerEmail}: ${input.message}`);
+  console.log(`[sendNotificationTool] Enviando notificación a ${input.passengerEmail}: ${input.message}`);
   // Implementación real de envío de correo aquí (ej. usando un servicio de email)
   // Por ahora, simulamos éxito.
   return true;
@@ -99,7 +96,7 @@ const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRouteInputSchema},
   output: {schema: WatchRouteOutputSchema},
-  tools: [findMatchingTripsTool, sendNotification], // Añadida la nueva herramienta
+  tools: [findMatchingTripsTool, sendNotificationTool], 
   prompt: `Eres un vigilante de rutas inteligente. Tu tarea principal es ayudar a los pasajeros a encontrar viajes que coincidan con sus rutas guardadas.
 
   Información de la ruta guardada por el pasajero:
@@ -109,7 +106,9 @@ const prompt = ai.definePrompt({
   - Fecha Preferida: {{{date}}} (Formato YYYY-MM-DD. Esta es la fecha que el pasajero guardó.)
 
   Proceso de Decisión:
-  1. Usa la herramienta 'findMatchingTripsTool' para buscar viajes *publicados y disponibles* que coincidan con el origen, destino y fecha preferidos por el pasajero. DEBES usar esta herramienta para verificar la existencia de viajes. El parámetro 'searchDate' para la herramienta DEBE ser la 'Fecha Preferida' del pasajero ({{{date}}}).
+  1. Usa la herramienta 'findMatchingTripsTool' para buscar viajes *publicados y disponibles* que coincidan con el origen, destino y fecha preferidos por el pasajero.
+     Para el parámetro 'searchDate' de la herramienta 'findMatchingTripsTool', DEBES usar el valor exacto de 'Fecha Preferida' ({{{date}}}) del input.
+     Para los parámetros 'origin' y 'destination' de la herramienta, DEBES usar los valores exactos de 'Origen Preferido' ({{{origin}}}) y 'Destino Preferido' ({{{destination}}}) del input.
   2. Si la herramienta 'findMatchingTripsTool' devuelve uno o más viajes coincidentes:
      a. Selecciona el primer viaje de la lista como la coincidencia.
      b. Construye un mensaje de notificación claro para el pasajero. El mensaje DEBE incluir:
@@ -119,9 +118,9 @@ const prompt = ai.definePrompt({
         - Nombre del conductor (driverFullName) si está disponible, o "Conductor Anónimo".
         - Correo electrónico del conductor (driverEmail) si está disponible.
         - Número de asientos disponibles.
-     c. Usa la herramienta 'sendNotification' para enviar este mensaje al 'passengerEmail' del input.
+     c. Usa la herramienta 'sendNotificationTool' para enviar este mensaje al 'passengerEmail' del input.
      d. Establece 'routeMatchFound' en true.
-     e. Establece 'notificationSent' según el resultado de la herramienta 'sendNotification'.
+     e. Establece 'notificationSent' según el resultado de la herramienta 'sendNotificationTool'.
      f. En el campo 'message' del output, resume la acción (ej: "Se encontró una coincidencia para tu ruta de {{{origin}}} a {{{destination}}} y se te ha notificado. Detalles del viaje: ...").
   3. Si la herramienta 'findMatchingTripsTool' NO devuelve ningún viaje coincidente:
      a. Establece 'routeMatchFound' en false.
@@ -150,15 +149,13 @@ const watchRouteFlow = ai.defineFlow(
   },
   async (input) => {
     console.log('[watchRouteFlow] Flow iniciado con input:', JSON.stringify(input, null, 2));
-    const {output} = await prompt(input); // El LLM ahora usará las herramientas.
+    const {output} = await prompt(input);
 
     console.log('[watchRouteFlow] Output del prompt (LLM):', JSON.stringify(output, null, 2));
 
     if (output) {
-      // Lógica adicional si es necesaria después de la respuesta del LLM
       if (output.routeMatchFound && !output.notificationSent) {
         console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero notificationSent=false. Esto podría indicar un problema en la herramienta de notificación o en la lógica del LLM para usarla.");
-        // output.message = `Se detectó una coincidencia para ${input.origin} a ${input.destination}, pero no se pudo enviar la notificación. Por favor, revisa el sistema.`;
       }
       return output;
     } else {
@@ -171,3 +168,4 @@ const watchRouteFlow = ai.defineFlow(
     }
   }
 );
+
