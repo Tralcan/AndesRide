@@ -11,12 +11,13 @@ const SavedRouteSchemaForDB = z.object({
   origin: z.string().min(1, "El origen es requerido."),
   destination: z.string().min(1, "El destino es requerido."),
   preferred_date: z.string().nullable().optional(), // Fecha como ISO string YYYY-MM-DD o null
+  passenger_email: z.string().email("Email del pasajero inválido").optional().nullable(), // Añadido para el email
 });
 
 export interface SavedRouteFromDB {
   id: string;
   passenger_id: string;
-  passenger_email: string | null; // Nueva columna
+  passenger_email: string | null;
   origin: string;
   destination: string;
   preferred_date: string | null; // ISO string YYYY-MM-DD
@@ -36,7 +37,7 @@ export async function getSavedRoutesAction(): Promise<{ success: boolean; routes
     console.log(`[getSavedRoutesAction] Fetching routes for passenger_id: ${user.id}`);
     const { data, error } = await supabase
       .from('saved_routes')
-      .select('*') // Incluye la nueva columna passenger_email
+      .select('*')
       .eq('passenger_id', user.id)
       .order('created_at', { ascending: false });
 
@@ -59,15 +60,21 @@ export async function addSavedRouteAction(
   const supabase = createServerActionClient();
   const { data: { user }, error: authError } = await supabase.auth.getUser();
 
-  if (authError || !user || !user.email) { // Asegurarse de que el email exista
+  if (authError || !user || !user.email) {
     console.error('[addSavedRouteAction] Auth error or user email missing:', authError, user);
     return { success: false, error: 'Usuario no autenticado o email no disponible.' };
   }
   console.log(`[addSavedRouteAction] Authenticated user: ${user.id}, email: ${user.email}`);
 
-  const validatedData = SavedRouteSchemaForDB.safeParse(routeData);
+  // Asegurarse que el email del usuario autenticado se use para passenger_email
+  const dataWithAuthenticatedUserEmail = {
+    ...routeData,
+    passenger_email: user.email,
+  };
+
+  const validatedData = SavedRouteSchemaForDB.safeParse(dataWithAuthenticatedUserEmail);
   if (!validatedData.success) {
-    const errorMessage = validatedData.error.flatten().fieldErrors_messages.join(', ');
+    const errorMessage = validatedData.error.flatten().fieldErrors?.join(', ') || "Error de validación desconocido.";
     console.error('[addSavedRouteAction] Validation failed:', errorMessage, validatedData.error.issues);
     return { success: false, error: errorMessage, errorDetails: validatedData.error.flatten() };
   }
@@ -75,10 +82,10 @@ export async function addSavedRouteAction(
 
   const dataToInsert = {
     passenger_id: user.id,
-    passenger_email: user.email, // Guardar el email del pasajero
+    passenger_email: validatedData.data.passenger_email, // Usar el email validado
     origin: validatedData.data.origin,
     destination: validatedData.data.destination,
-    preferred_date: validatedData.data.preferred_date, // Puede ser null
+    preferred_date: validatedData.data.preferred_date,
   };
   console.log('[addSavedRouteAction] Data to insert into DB:', dataToInsert);
 
@@ -96,7 +103,7 @@ export async function addSavedRouteAction(
       }
       return { success: false, error: `Error al guardar en DB: ${insertError.message}`, errorDetails: insertError };
     }
-    
+
     if (!newRoute) {
         console.error('[addSavedRouteAction] Insert successful but no route data returned from DB.');
         return { success: false, error: 'La ruta se guardó, por alguna razón no se recibieron datos de confirmación de la base de datos. Revisa la tabla directamente.' };
@@ -127,7 +134,7 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
       .from('saved_routes')
       .delete()
       .eq('id', routeId)
-      .eq('passenger_id', user.id); 
+      .eq('passenger_id', user.id);
 
     if (error) {
       console.error('[deleteSavedRouteAction] Error deleting saved route from DB:', error);
@@ -136,7 +143,7 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
       }
       return { success: false, error: error.message };
     }
-    
+
     console.log(`[deleteSavedRouteAction] Successfully deleted route ${routeId} from DB.`);
     revalidatePath('/dashboard/passenger/saved-routes');
     return { success: true };
@@ -168,51 +175,49 @@ export type FindPublishedMatchingTripsInput = z.infer<typeof FindPublishedMatchi
 export async function findPublishedMatchingTripsAction(
   input: FindPublishedMatchingTripsInput
 ): Promise<PublishedTripDetails[]> {
-  console.log('[findPublishedMatchingTripsAction] Received input:', input);
+  console.log(`[findPublishedMatchingTripsAction] Received input: origin="${input.origin}", destination="${input.destination}", searchDate="${input.searchDate}"`);
   const supabase = createServerActionClient();
-  
+
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
     console.warn('[findPublishedMatchingTripsAction] No authenticated user for this action, but proceeding as it might be called by system (Genkit tool).');
   }
 
   try {
-    // Usamos la función RPC 'search_trips_with_driver_info' que ya existe y funciona.
-    // Esta función ya debe manejar la obtención de la información del conductor, incluyendo el email si está disponible.
     const rpcParams = {
       p_origin: input.origin,
       p_destination: input.destination,
       p_search_date_str: input.searchDate,
     };
-    console.log('[findPublishedMatchingTripsAction] Calling RPC search_trips_with_driver_info with params:', rpcParams);
+    console.log('[findPublishedMatchingTripsAction] Calling RPC search_trips_with_driver_info with params:', JSON.stringify(rpcParams, null, 2));
 
     const { data: tripsData, error: rpcError } = await supabase.rpc('search_trips_with_driver_info', rpcParams);
-    
+
     if (rpcError) {
       console.error('[findPublishedMatchingTripsAction] Error calling RPC search_trips_with_driver_info:', JSON.stringify(rpcError, null, 2));
       return [];
     }
 
     if (!tripsData || tripsData.length === 0) {
-      console.log('[findPublishedMatchingTripsAction] No matching trips found by RPC for:', input);
+      console.log('[findPublishedMatchingTripsAction] No matching trips found by RPC for input:', JSON.stringify(input, null, 2));
       return [];
     }
 
-    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC.`);
+    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. First trip raw data (if any):`, tripsData[0] ? JSON.stringify(tripsData[0], null, 2) : "N/A");
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
       return {
-        tripId: trip.id, // Asumiendo que la RPC devuelve 'id' como tripId
-        driverEmail: trip.driver_email || null, // Asumiendo que la RPC devuelve 'driver_email'
-        driverFullName: trip.driver_name || 'Conductor Anónimo', // Asumiendo que la RPC devuelve 'driver_name'
+        tripId: trip.id,
+        driverEmail: trip.driver_email || null,
+        driverFullName: trip.driver_name || 'Conductor Anónimo',
         departureDateTime: trip.departure_datetime,
         origin: trip.origin,
         destination: trip.destination,
         seatsAvailable: trip.seats_available,
       };
     });
-    
-    console.log(`[findPublishedMatchingTripsAction] Mapped ${results.length} trips from RPC. First result (if any):`, results[0]);
+
+    console.log(`[findPublishedMatchingTripsAction] Mapped ${results.length} trips from RPC. First mapped result (if any):`, results[0] ? JSON.stringify(results[0], null, 2) : "N/A");
     return results;
 
   } catch (e: any) {

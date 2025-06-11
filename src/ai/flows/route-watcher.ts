@@ -57,14 +57,14 @@ const findMatchingTripsTool = ai.defineTool(
     outputSchema: FindMatchingTripsOutputToolSchema,
   },
   async (input: FindPublishedMatchingTripsInput): Promise<PublishedTripDetails[]> => {
-    console.log('[findMatchingTripsTool] Tool called with input:', input);
+    console.log('[findMatchingTripsTool] Tool called with input:', JSON.stringify(input, null, 2)); // Loguear el input exacto que recibe la herramienta
     try {
       const matchingTrips = await findPublishedMatchingTripsAction({
         origin: input.origin,
         destination: input.destination,
         searchDate: input.searchDate,
       });
-      console.log('[findMatchingTripsTool] Trips found by action:', matchingTrips);
+      console.log(`[findMatchingTripsTool] Trips found by findPublishedMatchingTripsAction: ${matchingTrips.length} trips. Data:`, JSON.stringify(matchingTrips, null, 2));
       return matchingTrips;
     } catch (error) {
       console.error('[findMatchingTripsTool] Error calling findPublishedMatchingTripsAction:', error);
@@ -87,7 +87,7 @@ async (input) => {
   console.log(`[sendNotification Tool] Enviando notificación a ${input.passengerEmail}: ${input.message}`);
   // Implementación real de envío de correo aquí (ej. usando un servicio de email)
   // Por ahora, simulamos éxito.
-  return true; 
+  return true;
 });
 
 
@@ -109,7 +109,7 @@ const prompt = ai.definePrompt({
   - Fecha Preferida: {{{date}}} (Formato YYYY-MM-DD. Esta es la fecha que el pasajero guardó.)
 
   Proceso de Decisión:
-  1. Usa la herramienta 'findMatchingTripsTool' para buscar viajes *publicados y disponibles* que coincidan con el origen, destino y fecha preferidos por el pasajero. DEBES usar esta herramienta para verificar la existencia de viajes.
+  1. Usa la herramienta 'findMatchingTripsTool' para buscar viajes *publicados y disponibles* que coincidan con el origen, destino y fecha preferidos por el pasajero. DEBES usar esta herramienta para verificar la existencia de viajes. El parámetro 'searchDate' para la herramienta DEBE ser la 'Fecha Preferida' del pasajero ({{{date}}}).
   2. Si la herramienta 'findMatchingTripsTool' devuelve uno o más viajes coincidentes:
      a. Selecciona el primer viaje de la lista como la coincidencia.
      b. Construye un mensaje de notificación claro para el pasajero. El mensaje DEBE incluir:
@@ -149,10 +149,10 @@ const watchRouteFlow = ai.defineFlow(
     outputSchema: WatchRouteOutputSchema,
   },
   async (input) => {
-    console.log('[watchRouteFlow] Flow iniciado con input:', input);
+    console.log('[watchRouteFlow] Flow iniciado con input:', JSON.stringify(input, null, 2));
     const {output} = await prompt(input); // El LLM ahora usará las herramientas.
-    
-    console.log('[watchRouteFlow] Output del prompt (LLM):', output);
+
+    console.log('[watchRouteFlow] Output del prompt (LLM):', JSON.stringify(output, null, 2));
 
     if (output) {
       // Lógica adicional si es necesaria después de la respuesta del LLM
@@ -171,4 +171,3 @@ const watchRouteFlow = ai.defineFlow(
     }
   }
 );
-
