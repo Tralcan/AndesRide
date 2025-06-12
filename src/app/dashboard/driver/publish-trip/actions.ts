@@ -2,7 +2,9 @@
 'use server';
 
 import { createServerActionClient } from '@/lib/supabase/server';
-import { watchRoute, type WatchRouteInput, type WatchRouteOutput } from '@/ai/flows/route-watcher'; 
+import { generatePromotionalImageForBrand, type GeneratePromotionalImageInput } from '@/ai/flows/generate-promo-image-flow';
+import { watchRoute } from '@/ai/flows/route-watcher'; // Importar la función principal
+import type { WatchRouteInput, WatchRouteOutput } from '@/ai/flows/route-watcher-types'; // Importar tipos del nuevo archivo
 import { revalidatePath } from 'next/cache';
 import { format, parseISO } from 'date-fns';
 
@@ -17,7 +19,7 @@ interface NewTripData {
 interface BasicSavedRouteForNotification {
   id: string;
   passenger_id: string;
-  passenger_email: string | null; // Columna clave para la notificación
+  passenger_email: string | null; 
   origin: string;
   destination: string;
   preferred_date: string | null; // YYYY-MM-DD or null
@@ -63,7 +65,6 @@ export async function processNewTripAndNotifyPassengersAction(
   revalidatePath('/dashboard/driver/manage-trips');
   revalidatePath('/dashboard/passenger/search-trips'); 
 
-  // Reactivar la lógica de notificación
   try {
     const newTripDateOnly = format(parseISO(newTrip.departure_datetime), 'yyyy-MM-dd');
     console.log(`[PublishTripActions] New trip details for matching: ID=${newTrip.id}, Origin=${newTrip.origin}, Dest=${newTrip.destination}, DateTime=${newTrip.departure_datetime}, FormattedDateOnly=${newTripDateOnly}`);
@@ -146,12 +147,12 @@ export async function processNewTripAndNotifyPassengersAction(
         passengerEmail: passengerEmail,
         origin: sr.origin, 
         destination: sr.destination, 
-        date: newTripDateOnly, // Usamos la fecha del viaje nuevo como referencia para la notificación
+        date: newTripDateOnly, 
       };
       console.log(`[PublishTripActions] Calling watchRoute for passenger ${passengerEmail} (Route ID: ${sr.id}) with input:`, JSON.stringify(watchInput, null, 2));
       
       notificationPromises.push(
-        watchRoute(watchInput) // Llamamos a watchRoute directamente
+        watchRoute(watchInput) 
           .then(output => {
             console.log(`[PublishTripActions] watchRoute SUCCESS for ${passengerEmail} (Route ID: ${sr.id}):`, JSON.stringify(output, null, 2));
             return { email: passengerEmail, saved_route_id: sr.id, success: output.notificationSent, ...output };
@@ -170,7 +171,7 @@ export async function processNewTripAndNotifyPassengersAction(
       .filter(result => result.status === 'fulfilled')
       .map(result => (result as PromiseFulfilledResult<any>).value);
 
-    const successfulNotifications = fulfilledResults.filter(r => r.success && r.notificationSent).length; // Corrected to check r.notificationSent
+    const successfulNotifications = fulfilledResults.filter(r => r.notificationSent).length;
     const totalAttempted = finalMatchingSavedRoutes.length;
 
     return {
@@ -188,4 +189,12 @@ export async function processNewTripAndNotifyPassengersAction(
       message: `Viaje publicado con ID: ${newTrip.id}. Ocurrió un error inesperado durante el proceso de notificación: ${error.message}. Por favor, revisa los logs del servidor.`,
     };
   }
+}
+
+interface NewTripData {
+  driver_id: string;
+  origin: string;
+  destination: string;
+  departure_datetime: string; // ISO string
+  seats_available: number;
 }
