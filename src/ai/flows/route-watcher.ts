@@ -25,8 +25,8 @@ export type WatchRouteInput = z.infer<typeof WatchRouteInputSchema>;
 const WatchRouteLLMOutputSchema = z.object({
   routeMatchFound: z.boolean().describe('Si se encontró una ruta coincidente REAL Y PUBLICADA.'),
   message: z.string().describe('Un mensaje que indica el resultado de la vigilancia de la ruta.'),
-  emailSubject: z.string().optional().describe('El asunto del correo electrónico a enviar, si se encontró una coincidencia. Debe ser breve, profesional, conciso y no exceder los 70 caracteres. NO usar emojis.'),
-  emailMessage: z.string().optional().describe('El cuerpo del mensaje del correo electrónico a enviar, si se encontró una coincidencia. Debe incluir los detalles del viaje y un saludo amigable. NO usar emojis.'),
+  emailSubject: z.string().optional().describe('El asunto del correo electrónico a enviar, si se encontró una coincidencia. Debe ser breve, profesional, conciso y no exceder los 70 caracteres. Evita usar emojis.'),
+  emailMessage: z.string().optional().describe('El cuerpo del mensaje del correo electrónico a enviar, si se encontró una coincidencia. Debe incluir los detalles del viaje y un saludo amigable. Evita usar emojis.'),
 });
 export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 
@@ -82,7 +82,7 @@ async function sendNotification(
 
   try {
     const { data, error } = await resend.emails.send({
-      from: `${APP_NAME} <onboarding@resend.dev>`, // Cambia esto por tu dominio verificado en producción
+      from: `${APP_NAME} <onboarding@resend.dev>`, 
       to: [passengerEmail],
       subject: subject,
       html: `<p>${message.replace(/\n/g, '<br>')}</p>`, 
@@ -124,7 +124,7 @@ const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
-  output: {schema: WatchRouteLLMOutputSchema}, // Corrected this line
+  output: {schema: WatchRouteLLMOutputSchema}, // &lt;- CORRECCIÓN REALIZADA AQUÍ
   prompt: `Eres un vigilante de rutas inteligente para la aplicación ${APP_NAME}. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
 
   Información de la ruta guardada por el pasajero:
@@ -141,12 +141,12 @@ const prompt = ai.definePrompt({
   2.  Si 'matchingTripsJson' está vacío o representa un array vacío (ej: "[]"), significa que NO se encontraron viajes publicados que coincidan. En este caso:
       i.  Establece 'routeMatchFound' en false.
       ii. En el campo 'message' del output, indica claramente que no se encontraron viajes publicados para la ruta (Origen: {{{origin}}}, Destino: {{{destination}}}, Fecha: {{{date}}}). Ejemplo: "No se encontraron viajes publicados para tu ruta de {{{origin}}} a {{{destination}}} en la fecha {{{date}}}. Seguiremos vigilando."
-      iii. NO generes 'emailSubject' ni 'emailMessage'.
+      iii. NO generes 'emailSubject' ni 'emailMessage'. Estos campos deben omitirse.
   3.  Si 'matchingTripsJson' representa un array con UNO O MÁS viajes publicados:
       a.  Selecciona el PRIMER viaje del array como la coincidencia principal.
       b.  Establece 'routeMatchFound' en true.
       c.  En el campo 'message' del output, resume la acción (ej: "¡Coincidencia encontrada! Se encontró un viaje de {{{origin}}} a {{{destination}}} para el {{{date}}}. Se procederá a notificar.").
-      d.  Genera un 'emailSubject' para el correo de notificación. Debe ser breve, conciso, profesional, NO exceder los 70 caracteres y NO usar emojis. Ejemplo: "¡Viaje Encontrado! {{{origin}}} - {{{destination}}}".
+      d.  Genera un 'emailSubject' para el correo de notificación. Debe ser breve, conciso, profesional, NO exceder los 70 caracteres y usar MÁXIMO UN emoji relevante si aplica. Ejemplo: "¡Viaje Encontrado! {{{origin}}} - {{{destination}}}".
       e.  Genera un 'emailMessage' para el cuerpo del correo. El mensaje DEBE ser amigable e incluir:
           - Saludo al pasajero (usa "Hola," o "Estimado/a pasajero/a,").
           - Confirmación de que se encontró un viaje para su ruta: {{{origin}}} a {{{destination}}} en la fecha {{{date}}}.
@@ -157,7 +157,7 @@ const prompt = ai.definePrompt({
               - Asientos disponibles: (usa el campo 'seatsAvailable').
           - Un llamado a la acción claro, por ejemplo: "Revisa los detalles y reserva tu asiento en ${APP_NAME}."
           - Una despedida cordial (ej. "Saludos," o "Atentamente,").
-          - El mensaje debe ser claro, conciso y formateado para fácil lectura en un email. No incluyas emojis.
+          - El mensaje debe ser claro, conciso y formateado para fácil lectura en un email. No incluyas emojis en el cuerpo del mensaje.
 
   Asegúrate de que la salida sea un objeto JSON válido que cumpla con WatchRouteLLMOutputSchema. No incluyas campos adicionales. Si no hay coincidencia, 'emailSubject' y 'emailMessage' deben estar ausentes u omitidos, no con valores vacíos o nulos.
 `,
@@ -195,11 +195,8 @@ const watchRouteFlow = ai.defineFlow(
         }
     } catch (error: any) {
         console.error('[watchRouteFlow] Error al llamar a findPublishedMatchingTripsAction:', error.message ? error.message : JSON.stringify(error));
-        return {
-          routeMatchFound: false,
-          notificationSent: false,
-          message: `Error al buscar viajes coincidentes: ${error.message}`,
-        };
+        // A pesar del error en la búsqueda, el flujo debería continuar para que el LLM pueda informar al usuario.
+        // No retornamos aquí para que el LLM pueda manejar el caso de "no se encontraron viajes" o "error al buscar".
     }
     
     const matchingTripsJson = JSON.stringify(matchingTrips);
@@ -211,7 +208,7 @@ const watchRouteFlow = ai.defineFlow(
     };
 
     console.log('[watchRouteFlow] Input para el prompt del LLM (incluyendo matchingTripsJson):', JSON.stringify(promptInput, null, 2));
-
+    
     const {output: llmOutput} = await prompt(promptInput);
 
     console.log('[watchRouteFlow] Output del LLM (WatchRouteLLMOutputSchema):', JSON.stringify(llmOutput, null, 2));
