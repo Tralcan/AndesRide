@@ -1,4 +1,3 @@
-
 'use server';
 /**
  * @fileOverview Un agente de IA para vigilar rutas que notifica a los usuarios cuando los viajes coinciden con sus rutas guardadas.
@@ -86,8 +85,8 @@ async function sendNotification(
       from: `${APP_NAME} <onboarding@resend.dev>`, // Cambia esto por tu dominio verificado en producción
       to: [passengerEmail],
       subject: subject,
-      html: `<p>${message.replace(/\n/g, '<br>')}</p>`, // Asegúrate de que el mensaje tenga formato HTML si es necesario
-      text: message, // Proporcionar una versión de texto plano también es bueno
+      html: `<p>${message.replace(/\n/g, '<br>')}</p>`, 
+      text: message,
     });
 
     if (error) {
@@ -125,7 +124,7 @@ const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
-  output: {schema: WatchRouteLLMOutputSchema}, // CORRECCIÓN AQUÍ
+  output: {schema: WatchRouteLLMOutputSchema}, // Corrected this line
   prompt: `Eres un vigilante de rutas inteligente para la aplicación ${APP_NAME}. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
 
   Información de la ruta guardada por el pasajero:
@@ -230,18 +229,13 @@ const watchRouteFlow = ai.defineFlow(
     if (llmOutput.routeMatchFound && llmOutput.emailSubject && llmOutput.emailMessage) {
       console.log(`[watchRouteFlow] Coincidencia encontrada por LLM. Procediendo a llamar a sendNotification. Subject: "${llmOutput.emailSubject}", Message snippet: "${llmOutput.emailMessage.substring(0, 100)}..."`);
       
-      // Añadimos una verificación para el nombre de la aplicación
-      if (!APP_NAME) {
-        console.error("[watchRouteFlow] Error: APP_NAME no está definido. No se puede construir el 'from' del email.");
-      } else {
-         notificationWasSent = await sendNotification(
-          input.passengerEmail,
-          llmOutput.emailSubject,
-          llmOutput.emailMessage
-        );
-        console.log(`[watchRouteFlow] Resultado de sendNotification: ${notificationWasSent}`);
-      }
-
+      notificationWasSent = await sendNotification(
+        input.passengerEmail,
+        llmOutput.emailSubject,
+        llmOutput.emailMessage
+      );
+      console.log(`[watchRouteFlow] Resultado de sendNotification: ${notificationWasSent}`);
+      
     } else if (llmOutput.routeMatchFound && (!llmOutput.emailSubject || !llmOutput.emailMessage)) {
         console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero no generó emailSubject o emailMessage. No se intentará la notificación. LLM Output:", JSON.stringify(llmOutput, null, 2));
     } else {
