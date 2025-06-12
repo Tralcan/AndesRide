@@ -42,31 +42,32 @@ if (resendApiKey) {
   console.warn('[route-watcher] RESEND_API_KEY no está configurada. Las notificaciones por email no funcionarán.');
 }
 
-const sendNotificationTool = ai.defineTool({
-  name: 'sendNotificationTool',
-  description: 'Envía una notificación por correo electrónico al pasajero sobre un viaje REAL Y PUBLICADO que coincide con su ruta guardada.',
-  inputSchema: z.object({
+const SendNotificationInputSchema = z.object({
     passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
     message: z.string().describe('El mensaje a enviar en la notificación, que debe incluir detalles del viaje encontrado.'),
     subject: z.string().describe('El asunto del correo electrónico.'),
-  }),
+  });
+
+const sendNotificationTool = ai.defineTool({
+  name: 'sendNotificationTool',
+  description: 'Envía una notificación por correo electrónico al pasajero sobre un viaje REAL Y PUBLICADO que coincide con su ruta guardada.',
+  inputSchema: SendNotificationInputSchema,
   outputSchema: z.boolean().describe('Si la notificación se envió con éxito.'),
 },
 async (input) => {
+  console.log('[sendNotificationTool] HERRAMIENTA INVOCADA con input:', JSON.stringify(input, null, 2)); // LOG ADICIONAL
   if (!resend) {
     console.error('[sendNotificationTool] Resend client no está inicializado. No se puede enviar el email.');
     return false;
   }
   console.log(`[sendNotificationTool] Intentando enviar email a ${input.passengerEmail} con asunto: "${input.subject}"`);
   try {
-    // IMPORTANTE: Para producción, usa un email verificado en tu cuenta de Resend como 'from'.
-    // 'onboarding@resend.dev' es para pruebas y puede tener limitaciones.
     const { data, error } = await resend.emails.send({
-      from: `${APP_NAME} <onboarding@resend.dev>`, // Reemplaza con tu email verificado para producción
+      from: `${APP_NAME} <onboarding@resend.dev>`,
       to: [input.passengerEmail],
       subject: input.subject,
-      html: `<p>${input.message.replace(/\n/g, '<br>')}</p>`, // Convertir saltos de línea a <br> para HTML
-      text: input.message, // Versión en texto plano
+      html: `<p>${input.message.replace(/\n/g, '<br>')}</p>`,
+      text: input.message,
     });
 
     if (error) {
@@ -81,7 +82,6 @@ async (input) => {
   }
 });
 
-
 export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutput> {
   return watchRouteFlow(input);
 }
@@ -94,7 +94,7 @@ const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
   output: {schema: WatchRouteOutputSchema},
-  tools: [sendNotificationTool], 
+  tools: [sendNotificationTool],
   prompt: `Eres un vigilante de rutas inteligente para la aplicación ${APP_NAME}. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
 
   Información de la ruta guardada por el pasajero:
@@ -125,7 +125,7 @@ const prompt = ai.definePrompt({
         - Número de asientos disponibles (campo 'seatsAvailable').
         - Un saludo cordial y una despedida.
      c. Define un ASUNTO para el correo. Debe ser informativo, por ejemplo: "¡Buenas noticias! Encontramos un viaje para ti en ${APP_NAME}".
-     d. Usa la herramienta 'sendNotificationTool' para enviar este mensaje y asunto al 'passengerEmail' ({{{passengerEmail}}}) del input.
+     d. DEBES usar la herramienta 'sendNotificationTool' para enviar este mensaje y asunto al 'passengerEmail' ({{{passengerEmail}}}) del input. ES ESENCIAL que uses la herramienta.
      e. Establece 'routeMatchFound' en true.
      f. Establece 'notificationSent' según el resultado de la herramienta 'sendNotificationTool'.
      g. En el campo 'message' del output, resume la acción (ej: "¡Coincidencia encontrada! Se encontró un viaje de {{{origin}}} a {{{destination}}} para el {{{date}}} y se ha notificado al pasajero."). Si la notificación falló pero el viaje se encontró, indícalo (ej: "Se encontró un viaje, pero la notificación al pasajero falló.").
@@ -164,6 +164,8 @@ const watchRouteFlow = ai.defineFlow(
         console.log(`[watchRouteFlow] findPublishedMatchingTripsAction devolvió ${matchingTrips.length} viaje(s). Datos (primeros 500 chars):`, JSON.stringify(matchingTrips, null, 2).substring(0, 500));
     } catch (error: any) {
         console.error('[watchRouteFlow] Error al llamar a findPublishedMatchingTripsAction:', error.message ? error.message : JSON.stringify(error));
+        // Si la búsqueda de viajes falla, informamos al LLM que no se encontraron viajes.
+        matchingTrips = [];
     }
     
     const matchingTripsJson = JSON.stringify(matchingTrips);
@@ -175,17 +177,20 @@ const watchRouteFlow = ai.defineFlow(
     };
 
     console.log('[watchRouteFlow] Input para el prompt del LLM (incluyendo matchingTripsJson):', JSON.stringify(promptInput, null, 2));
-    const {output} = await prompt(promptInput); 
+    const {output} = await prompt(promptInput);
 
     console.log('[watchRouteFlow] Output del prompt (LLM):', JSON.stringify(output, null, 2));
 
     if (output) {
       if (output.routeMatchFound && !output.notificationSent) {
+        // Este escenario es problemático si el LLM encontró una coincidencia pero dice que la notificación no se envió.
+        // Podría indicar que la herramienta de notificación falló o el LLM no la usó correctamente / interpretó mal su resultado.
         console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero notificationSent=false. Esto podría indicar un problema en la herramienta de notificación o en la lógica del LLM para usarla.");
       }
       return output;
     } else {
       console.error('[watchRouteFlow] No se recibió una respuesta estructurada del LLM.');
+      // Fallback en caso de que el LLM no devuelva nada o algo inválido.
       return {
         routeMatchFound: false,
         notificationSent: false,
@@ -194,3 +199,5 @@ const watchRouteFlow = ai.defineFlow(
     }
   }
 );
+
+    
