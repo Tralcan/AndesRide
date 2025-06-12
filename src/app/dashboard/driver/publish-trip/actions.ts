@@ -2,7 +2,7 @@
 'use server';
 
 import { createServerActionClient } from '@/lib/supabase/server';
-// import { watchRouteFlow, type WatchRouteInput } from '@/ai/flows/route-watcher'; // Temporarily commented out
+import { watchRoute, type WatchRouteInput, type WatchRouteOutput } from '@/ai/flows/route-watcher'; // Asegúrate de importar WatchRouteOutput también
 import { revalidatePath } from 'next/cache';
 import { format, parseISO } from 'date-fns';
 
@@ -68,16 +68,7 @@ export async function processNewTripAndNotifyPassengersAction(
   revalidatePath('/dashboard/driver/manage-trips');
   revalidatePath('/dashboard/passenger/search-trips'); 
 
-  // Temporarily disable notification logic
-  console.log('[PublishTripActions] Notification logic temporarily disabled for debugging.');
-  return {
-    success: true,
-    tripId: newTrip.id,
-    message: `Viaje publicado con ID: ${newTrip.id}. Notificaciones temporalmente deshabilitadas.`,
-  };
-
-  /*
-  // Original notification logic - TEMPORARILY COMMENTED OUT
+  // Reactivar la lógica de notificación
   try {
     const newTripDateOnly = format(parseISO(newTrip.departure_datetime), 'yyyy-MM-dd');
     console.log(`[PublishTripActions] New trip details for matching: ID=${newTrip.id}, Origin=${newTrip.origin}, Dest=${newTrip.destination}, DateTime=${newTrip.departure_datetime}, FormattedDateOnly=${newTripDateOnly}`);
@@ -151,7 +142,7 @@ export async function processNewTripAndNotifyPassengersAction(
       };
     }
 
-    const notificationPromises: Promise<any>[] = [];
+    const notificationPromises: Promise<WatchRouteOutput & { email: string; saved_route_id: string; success: boolean; error?: string }>[] = [];
     
     for (const sr of finalMatchingSavedRoutes) {
       const passengerEmail = sr.passenger_email!; 
@@ -162,17 +153,17 @@ export async function processNewTripAndNotifyPassengersAction(
         destination: sr.destination, 
         date: newTripDateOnly, // Usamos la fecha del viaje nuevo como referencia para la notificación
       };
-      console.log(`[PublishTripActions] Calling watchRouteFlow for passenger ${passengerEmail} (Route ID: ${sr.id}) with input:`, JSON.stringify(watchInput, null, 2));
+      console.log(`[PublishTripActions] Calling watchRoute for passenger ${passengerEmail} (Route ID: ${sr.id}) with input:`, JSON.stringify(watchInput, null, 2));
       
       notificationPromises.push(
-        watchRouteFlow(watchInput) // Llamamos a watchRouteFlow directamente
+        watchRoute(watchInput) // Llamamos a watchRoute directamente
           .then(output => {
-            console.log(`[PublishTripActions] watchRouteFlow SUCCESS for ${passengerEmail} (Route ID: ${sr.id}):`, JSON.stringify(output, null, 2));
-            return { email: passengerEmail, saved_route_id: sr.id, success: true, output };
+            console.log(`[PublishTripActions] watchRoute SUCCESS for ${passengerEmail} (Route ID: ${sr.id}):`, JSON.stringify(output, null, 2));
+            return { email: passengerEmail, saved_route_id: sr.id, success: true, ...output };
           })
           .catch(error => {
-            console.error(`[PublishTripActions] watchRouteFlow FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, error.message ? error.message : JSON.stringify(error, null, 2));
-            return { email: passengerEmail, saved_route_id: sr.id, success: false, error: error.message || 'Unknown error from watchRouteFlow' };
+            console.error(`[PublishTripActions] watchRoute FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, error.message ? error.message : JSON.stringify(error, null, 2));
+            return { email: passengerEmail, saved_route_id: sr.id, success: false, error: error.message || 'Unknown error from watchRoute', routeMatchFound: false, notificationSent: false, message: `Error al procesar la ruta para ${passengerEmail}: ${error.message}` };
           })
       );
     }
@@ -184,13 +175,13 @@ export async function processNewTripAndNotifyPassengersAction(
       .filter(result => result.status === 'fulfilled')
       .map(result => (result as PromiseFulfilledResult<any>).value);
 
-    const successfulNotifications = fulfilledResults.filter(r => r.success && r.output?.notificationSent).length;
+    const successfulNotifications = fulfilledResults.filter(r => r.success && r.notificationSent).length;
     const totalAttempted = finalMatchingSavedRoutes.length;
 
     return {
       success: true,
       tripId: newTrip.id,
-      message: `Viaje publicado con ID: ${newTrip.id}. Se intentó notificar a ${totalAttempted} pasajero(s) (${successfulNotifications} notificaciones exitosas). Revisa los logs del servidor para más detalles.`,
+      message: `Viaje publicado con ID: ${newTrip.id}. Se intentó notificar a ${totalAttempted} pasajero(s) (${successfulNotifications} notificaciones enviadas).`,
       notificationResults: fulfilledResults,
     };
 
@@ -202,5 +193,4 @@ export async function processNewTripAndNotifyPassengersAction(
       message: `Viaje publicado con ID: ${newTrip.id}. Ocurrió un error inesperado durante el proceso de notificación: ${error.message}. Por favor, revisa los logs del servidor.`,
     };
   }
-  */
 }

@@ -2,9 +2,9 @@
 /**
  * @fileOverview Un agente de IA para vigilar rutas que notifica a los usuarios cuando los viajes coinciden con sus rutas guardadas.
  *
- * - watchRouteFlow - La función principal del flujo que maneja la vigilancia de rutas.
- * - WatchRouteInput - El tipo de entrada para la función watchRouteFlow.
- * - WatchRouteOutput - El tipo de retorno para la función watchRouteFlow.
+ * - watchRoute - La función principal del flujo que maneja la vigilancia de rutas.
+ * - WatchRouteInput - El tipo de entrada para la función watchRoute.
+ * - WatchRouteOutput - El tipo de retorno para la función watchRoute.
  */
 
 import {ai} from '@/ai/genkit';
@@ -58,7 +58,7 @@ async function sendNotification(
     message: string
 ): Promise<boolean> {
     console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-    console.log(`[sendNotification FUNCTION] INVOCADA CON: Email: ${passengerEmail}, Subject (primeros 50): "${subject.substring(0,50)}...", Message (primeros 100 chars): "${message.substring(0,100)}..."`);
+    console.log(`[sendNotification FUNCTION] INVOCADA CON: Email: ${passengerEmail}, Subject (primeros 70): "${subject.substring(0,70)}...", Message (primeros 100 chars): "${message.substring(0,100)}..."`);
     console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
 
   if (!resend) {
@@ -82,10 +82,10 @@ async function sendNotification(
 
   try {
     const { data, error } = await resend.emails.send({
-      from: `${APP_NAME} <onboarding@resend.dev>`, 
+      from: `${APP_NAME} <onboarding@resend.dev>`,
       to: [passengerEmail],
       subject: subject,
-      html: `<p>${message.replace(/\n/g, '<br>')}</p>`, 
+      html: `<p>${message.replace(/\n/g, '<br>')}</p>`,
       text: message,
     });
 
@@ -108,7 +108,7 @@ const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
-  output: {schema: WatchRouteLLMOutputSchema}, // Esta es la corrección clave
+  output: {schema: WatchRouteLLMOutputSchema}, // CORREGIDO: Usar WatchRouteLLMOutputSchema
   prompt: `Eres un vigilante de rutas inteligente para la aplicación ${APP_NAME}. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
 
   Información de la ruta guardada por el pasajero:
@@ -179,6 +179,8 @@ export const watchRouteFlow = ai.defineFlow(
         }
     } catch (error: any) {
         console.error('[watchRouteFlow] Error al llamar a findPublishedMatchingTripsAction:', error.message ? error.message : JSON.stringify(error));
+        // En caso de error al buscar viajes, aún podríamos querer que el LLM genere un mensaje de "no se encontraron viajes"
+        // o manejarlo como un fallo directo. Por ahora, continuamos con un array vacío de viajes.
     }
     
     const matchingTripsJson = JSON.stringify(matchingTrips);
@@ -208,15 +210,33 @@ export const watchRouteFlow = ai.defineFlow(
     if (llmOutput.routeMatchFound && llmOutput.emailSubject && llmOutput.emailMessage) {
       console.log(`[watchRouteFlow] Coincidencia encontrada por LLM. Procediendo a llamar a sendNotification. Subject: "${llmOutput.emailSubject}", Message snippet: "${llmOutput.emailMessage.substring(0, 100)}..."`);
       
+      // Limpieza del subject
+      let cleanedSubject = llmOutput.emailSubject;
+      const emojiRegex = /([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}])/gu;
+      const emojis = cleanedSubject.match(emojiRegex);
+      if (emojis && emojis.length > 1) { // Permitir un emoji
+          let emojiCount = 0;
+          cleanedSubject = Array.from(cleanedSubject).filter(char => {
+              if (emojiRegex.test(char)) {
+                  emojiCount++;
+                  return emojiCount <= 1;
+              }
+              return true;
+          }).join('');
+      }
+      if (cleanedSubject.length > 70) {
+          cleanedSubject = cleanedSubject.substring(0, 67) + "...";
+      }
+
       notificationWasSent = await sendNotification(
         input.passengerEmail,
-        llmOutput.emailSubject,
+        cleanedSubject,
         llmOutput.emailMessage
       );
       console.log(`[watchRouteFlow] Resultado de sendNotification: ${notificationWasSent}`);
       
-    } else if (llmOutput.routeMatchFound && (!llmOutput.emailSubject || !llmOutput.emailMessage)) {
-        console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero no generó emailSubject o emailMessage. No se intentará la notificación. LLM Output:", JSON.stringify(llmOutput, null, 2));
+    } else if (llmOutput.routeMatchFound) {
+        console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero no generó emailSubject o emailMessage. No se intentará la notificación.");
     } else {
         console.log("[watchRouteFlow] No se encontró coincidencia de ruta según el LLM o faltan detalles para la notificación. No se enviará correo.");
     }
@@ -231,3 +251,9 @@ export const watchRouteFlow = ai.defineFlow(
     return finalOutput;
   }
 );
+
+// Exportar la función principal para que pueda ser llamada desde otros módulos (como Server Actions)
+export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutput> {
+  console.log('[watchRoute] Invoking watchRouteFlow with input:', JSON.stringify(input, null, 2));
+  return await watchRouteFlow(input);
+}
