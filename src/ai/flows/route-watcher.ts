@@ -45,7 +45,7 @@ if (resendApiKey) {
 const SendNotificationInputSchema = z.object({
     passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
     message: z.string().describe('El mensaje a enviar en la notificación, que debe incluir detalles del viaje encontrado.'),
-    subject: z.string().describe('El asunto del correo electrónico.'),
+    subject: z.string().describe('El asunto del correo electrónico.'), // Asegurarse que 'subject' esté aquí.
   });
 
 const sendNotificationTool = ai.defineTool({
@@ -55,19 +55,36 @@ const sendNotificationTool = ai.defineTool({
   outputSchema: z.boolean().describe('Si la notificación se envió con éxito.'),
 },
 async (input) => {
-  console.log('[sendNotificationTool] HERRAMIENTA INVOCADA con input:', JSON.stringify(input, null, 2)); // LOG ADICIONAL
+  console.log('\n!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+  console.log(`[sendNotificationTool] HERRAMIENTA INVOCADA CON INPUT: ${JSON.stringify(input, null, 2)}`);
+  console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n');
+
+  if (!APP_NAME) {
+    console.error('[sendNotificationTool] APP_NAME no está definido. Revisa src/lib/constants.ts. No se puede enviar el email.');
+    return false;
+  }
+  console.log(`[sendNotificationTool] APP_NAME: ${APP_NAME}`);
+
   if (!resend) {
     console.error('[sendNotificationTool] Resend client no está inicializado. No se puede enviar el email.');
     return false;
   }
+   console.log('[sendNotificationTool] Resend client está inicializado.');
+
+  if (!input.passengerEmail || !input.message || !input.subject) {
+    console.error(`[sendNotificationTool] Faltan campos requeridos en el input del LLM. Recibido: passengerEmail=${input.passengerEmail}, subject=${input.subject}, message (longitud)=${input.message?.length}. No se puede enviar el email.`);
+    return false;
+  }
+  console.log(`[sendNotificationTool] Todos los campos requeridos (passengerEmail, message, subject) están presentes en el input.`);
+
   console.log(`[sendNotificationTool] Intentando enviar email a ${input.passengerEmail} con asunto: "${input.subject}"`);
   try {
     const { data, error } = await resend.emails.send({
-      from: `${APP_NAME} <onboarding@resend.dev>`,
+      from: `${APP_NAME} <onboarding@resend.dev>`, // Considera usar un dominio verificado para producción
       to: [input.passengerEmail],
       subject: input.subject,
-      html: `<p>${input.message.replace(/\n/g, '<br>')}</p>`,
-      text: input.message,
+      html: `<p>${input.message.replace(/\n/g, '<br>')}</p>`, // Convertir saltos de línea a <br> para HTML
+      text: input.message, // Mensaje como texto plano
     });
 
     if (error) {
@@ -77,7 +94,7 @@ async (input) => {
     console.log('[sendNotificationTool] Email enviado exitosamente. ID:', data?.id);
     return true;
   } catch (e: any) {
-    console.error('[sendNotificationTool] Excepción al enviar email:', JSON.stringify(e, null, 2));
+    console.error('[sendNotificationTool] Excepción al enviar email:', JSON.stringify(e, Object.getOwnPropertyNames(e), 2));
     return false;
   }
 });
@@ -86,6 +103,7 @@ export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutp
   return watchRouteFlow(input);
 }
 
+// Input schema for the prompt - includes the original input and the fetched trips as JSON
 const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
     matchingTripsJson: z.string().describe('Un string JSON que representa un array de objetos PublishedTripDetails. Cada objeto describe un viaje publicado que coincide con el origen, destino y fecha. Si no se encontraron viajes, será un string JSON de un array vacío "[]".')
 });
@@ -94,7 +112,7 @@ const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
   output: {schema: WatchRouteOutputSchema},
-  tools: [sendNotificationTool],
+  tools: [sendNotificationTool], // Solo sendNotificationTool
   prompt: `Eres un vigilante de rutas inteligente para la aplicación ${APP_NAME}. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
 
   Información de la ruta guardada por el pasajero:
@@ -121,7 +139,7 @@ const prompt = ai.definePrompt({
         - Destino del viaje encontrado.
         - Fecha y Hora de salida del viaje encontrado (el campo 'departureDateTime' del viaje encontrado YA ESTÁ FORMATEADO como "dd MMM yyyy a las HH:mm").
         - Nombre del conductor (campo 'driverFullName'), si está disponible, o "Conductor Anónimo".
-        - Correo electrónico del conductor (campo 'driverEmail'), si está disponible.
+        - Correo electrónico del conductor (campo 'driverEmail'), si está disponible y no es null. Si es null, omitir esta línea.
         - Número de asientos disponibles (campo 'seatsAvailable').
         - Un saludo cordial y una despedida.
      c. Define un ASUNTO para el correo. Debe ser informativo, por ejemplo: "¡Buenas noticias! Encontramos un viaje para ti en ${APP_NAME}".
@@ -134,7 +152,7 @@ const prompt = ai.definePrompt({
   Asegúrate de que la salida sea un objeto JSON válido que cumpla con WatchRouteOutputSchema.
 `,
   config: {
-    safetySettings: [
+    safetySettings: [ // Configuración de seguridad de Gemini
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
       { category: 'HARM_CATEGORY_HARASSMENT', threshold: 'BLOCK_MEDIUM_AND_ABOVE' },
@@ -152,10 +170,11 @@ const watchRouteFlow = ai.defineFlow(
   async (input) => {
     console.log('[watchRouteFlow] Flow iniciado con input:', JSON.stringify(input, null, 2));
 
+    // 1. Llamar a la acción para encontrar viajes coincidentes directamente
     const searchInput: FindPublishedMatchingTripsInput = {
         origin: input.origin,
         destination: input.destination,
-        searchDate: input.date,
+        searchDate: input.date, // Usar la fecha del input del flujo (ruta guardada)
     };
     console.log('[watchRouteFlow] Llamando a findPublishedMatchingTripsAction con input:', JSON.stringify(searchInput, null, 2));
     let matchingTrips: PublishedTripDetails[] = [];
@@ -168,29 +187,33 @@ const watchRouteFlow = ai.defineFlow(
         matchingTrips = [];
     }
     
+    // Convertir los viajes encontrados a JSON para el prompt del LLM
     const matchingTripsJson = JSON.stringify(matchingTrips);
     console.log('[watchRouteFlow] String JSON de viajes coincidentes para el LLM:', matchingTripsJson);
 
+    // 2. Preparar el input para el prompt del LLM (incluyendo el JSON de los viajes)
     const promptInput = {
-        ...input,
+        ...input, // passengerEmail, origin, destination, date (de la ruta guardada)
         matchingTripsJson: matchingTripsJson,
     };
 
     console.log('[watchRouteFlow] Input para el prompt del LLM (incluyendo matchingTripsJson):', JSON.stringify(promptInput, null, 2));
+
+    // 3. Llamar al LLM
     const {output} = await prompt(promptInput);
 
     console.log('[watchRouteFlow] Output del prompt (LLM):', JSON.stringify(output, null, 2));
 
+    // 4. Devolver el output del LLM
     if (output) {
+      // Log adicional si el LLM dice que encontró un match pero la notificación falló
       if (output.routeMatchFound && !output.notificationSent) {
-        // Este escenario es problemático si el LLM encontró una coincidencia pero dice que la notificación no se envió.
-        // Podría indicar que la herramienta de notificación falló o el LLM no la usó correctamente / interpretó mal su resultado.
-        console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero notificationSent=false. Esto podría indicar un problema en la herramienta de notificación o en la lógica del LLM para usarla.");
+        console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero notificationSent=false. Esto podría indicar un problema en la herramienta de notificación o en la lógica del LLM para usarla/interpretar su resultado.");
       }
       return output;
     } else {
-      console.error('[watchRouteFlow] No se recibió una respuesta estructurada del LLM.');
       // Fallback en caso de que el LLM no devuelva nada o algo inválido.
+      console.error('[watchRouteFlow] No se recibió una respuesta estructurada del LLM.');
       return {
         routeMatchFound: false,
         notificationSent: false,
