@@ -2,9 +2,9 @@
 /**
  * @fileOverview Un agente de IA para vigilar rutas que notifica a los usuarios cuando los viajes coinciden con sus rutas guardadas.
  *
- * - watchRoute - Una función que maneja el proceso de vigilancia de rutas.
- * - WatchRouteInput - El tipo de entrada para la función watchRoute.
- * - WatchRouteOutput - El tipo de retorno para la función watchRoute.
+ * - watchRouteFlow - La función principal del flujo que maneja la vigilancia de rutas.
+ * - WatchRouteInput - El tipo de entrada para la función watchRouteFlow.
+ * - WatchRouteOutput - El tipo de retorno para la función watchRouteFlow.
  */
 
 import {ai} from '@/ai/genkit';
@@ -30,7 +30,7 @@ const WatchRouteLLMOutputSchema = z.object({
 });
 export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 
-// Interfaz para la salida final de la función watchRoute
+// Interfaz para la salida final de la función watchRouteFlow
 export interface WatchRouteOutput {
     routeMatchFound: boolean;
     notificationSent: boolean;
@@ -58,7 +58,7 @@ async function sendNotification(
     message: string
 ): Promise<boolean> {
     console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-    console.log(`[sendNotification FUNCTION] INVOCADA CON: Email: ${passengerEmail}, Subject: "${subject}", Message (primeros 100 chars): "${message.substring(0,100)}..."`);
+    console.log(`[sendNotification FUNCTION] INVOCADA CON: Email: ${passengerEmail}, Subject (primeros 50): "${subject.substring(0,50)}...", Message (primeros 100 chars): "${message.substring(0,100)}..."`);
     console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
 
   if (!resend) {
@@ -101,22 +101,6 @@ async function sendNotification(
   }
 }
 
-export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutput> {
-  console.log('[watchRoute] INICIO. Input:', JSON.stringify(input, null, 2));
-  try {
-    const result = await watchRouteFlow(input);
-    console.log('[watchRoute] FIN. Resultado:', JSON.stringify(result, null, 2));
-    return result;
-  } catch (error: any) {
-    console.error('[watchRoute] ERROR EN EL FLUJO:', error);
-    return {
-      routeMatchFound: false,
-      notificationSent: false,
-      message: `Error procesando la vigilancia de ruta: ${error.message || 'Error desconocido en watchRoute'}.`,
-    };
-  }
-}
-
 const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
     matchingTripsJson: z.string().describe('Un string JSON que representa un array de objetos PublishedTripDetails. Cada objeto describe un viaje publicado que coincide con el origen, destino y fecha. Si no se encontraron viajes, será un string JSON de un array vacío "[]".')
 });
@@ -124,7 +108,7 @@ const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
-  output: {schema: WatchRouteLLMOutputSchema}, // &lt;- CORRECCIÓN REALIZADA AQUÍ
+  output: {schema: WatchRouteLLMOutputSchema}, // Esta es la corrección clave
   prompt: `Eres un vigilante de rutas inteligente para la aplicación ${APP_NAME}. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
 
   Información de la ruta guardada por el pasajero:
@@ -146,7 +130,7 @@ const prompt = ai.definePrompt({
       a.  Selecciona el PRIMER viaje del array como la coincidencia principal.
       b.  Establece 'routeMatchFound' en true.
       c.  En el campo 'message' del output, resume la acción (ej: "¡Coincidencia encontrada! Se encontró un viaje de {{{origin}}} a {{{destination}}} para el {{{date}}}. Se procederá a notificar.").
-      d.  Genera un 'emailSubject' para el correo de notificación. Debe ser breve, conciso, profesional, NO exceder los 70 caracteres y usar MÁXIMO UN emoji relevante si aplica. Ejemplo: "¡Viaje Encontrado! {{{origin}}} - {{{destination}}}".
+      d.  Genera un 'emailSubject' para el correo de notificación. Debe ser breve, conciso, profesional, NO exceder los 70 caracteres y NO usar emojis. Ejemplo: "¡Viaje Encontrado! {{{origin}}} - {{{destination}}}".
       e.  Genera un 'emailMessage' para el cuerpo del correo. El mensaje DEBE ser amigable e incluir:
           - Saludo al pasajero (usa "Hola," o "Estimado/a pasajero/a,").
           - Confirmación de que se encontró un viaje para su ruta: {{{origin}}} a {{{destination}}} en la fecha {{{date}}}.
@@ -171,13 +155,13 @@ const prompt = ai.definePrompt({
   },
 });
 
-const watchRouteFlow = ai.defineFlow(
+export const watchRouteFlow = ai.defineFlow(
   {
-    name: 'watchRouteFlow',
+    name: 'watchRouteFlowInternal', // Renombrado para evitar confusión
     inputSchema: WatchRouteInputSchema,
-    outputSchema: WatchRouteOutputSchema, 
+    outputSchema: WatchRouteOutputSchema, // Usamos la interfaz para el output del flujo
   },
-  async (input): Promise<WatchRouteOutput> => {
+  async (input: WatchRouteInput): Promise<WatchRouteOutput> => {
     console.log('[watchRouteFlow] Flow iniciado con input:', JSON.stringify(input, null, 2));
 
     const searchInput: FindPublishedMatchingTripsInput = {
@@ -195,8 +179,6 @@ const watchRouteFlow = ai.defineFlow(
         }
     } catch (error: any) {
         console.error('[watchRouteFlow] Error al llamar a findPublishedMatchingTripsAction:', error.message ? error.message : JSON.stringify(error));
-        // A pesar del error en la búsqueda, el flujo debería continuar para que el LLM pueda informar al usuario.
-        // No retornamos aquí para que el LLM pueda manejar el caso de "no se encontraron viajes" o "error al buscar".
     }
     
     const matchingTripsJson = JSON.stringify(matchingTrips);
@@ -209,7 +191,7 @@ const watchRouteFlow = ai.defineFlow(
 
     console.log('[watchRouteFlow] Input para el prompt del LLM (incluyendo matchingTripsJson):', JSON.stringify(promptInput, null, 2));
     
-    const {output: llmOutput} = await prompt(promptInput);
+    const { output: llmOutput } = await prompt(promptInput);
 
     console.log('[watchRouteFlow] Output del LLM (WatchRouteLLMOutputSchema):', JSON.stringify(llmOutput, null, 2));
 

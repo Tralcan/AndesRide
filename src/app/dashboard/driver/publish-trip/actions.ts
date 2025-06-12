@@ -1,9 +1,8 @@
-
 // src/app/dashboard/driver/publish-trip/actions.ts
 'use server';
 
 import { createServerActionClient } from '@/lib/supabase/server';
-import { watchRoute, type WatchRouteInput } from '@/ai/flows/route-watcher';
+import { watchRouteFlow, type WatchRouteInput } from '@/ai/flows/route-watcher'; // Importar watchRouteFlow
 import { revalidatePath } from 'next/cache';
 import { format, parseISO } from 'date-fns';
 
@@ -46,11 +45,9 @@ export async function processNewTripAndNotifyPassengersAction(
   
   console.log(`[PublishTripActions] Authenticated driver user ID: ${driverUser.id}`);
   
-  // Aseguramos que el driver_id en tripData coincida con el usuario autenticado
-  // Esto es una buena práctica de seguridad aunque RLS debería manejarlo.
   if (tripData.driver_id !== driverUser.id) {
     console.warn(`[PublishTripActions] Mismatch between provided driver_id (${tripData.driver_id}) and authenticated user_id (${driverUser.id}). Using authenticated user_id.`);
-    tripData.driver_id = driverUser.id; // Sobrescribir con el ID autenticado
+    tripData.driver_id = driverUser.id;
   }
 
   const { data: newTrip, error: insertTripError } = await supabase
@@ -153,19 +150,19 @@ export async function processNewTripAndNotifyPassengersAction(
         passengerEmail: passengerEmail,
         origin: sr.origin, 
         destination: sr.destination, 
-        date: newTripDateOnly,
+        date: newTripDateOnly, // Usamos la fecha del viaje nuevo como referencia para la notificación
       };
-      console.log(`[PublishTripActions] Calling watchRoute for passenger ${passengerEmail} (Route ID: ${sr.id}) with input:`, JSON.stringify(watchInput, null, 2));
+      console.log(`[PublishTripActions] Calling watchRouteFlow for passenger ${passengerEmail} (Route ID: ${sr.id}) with input:`, JSON.stringify(watchInput, null, 2));
       
       notificationPromises.push(
-        watchRoute(watchInput)
+        watchRouteFlow(watchInput) // Llamamos a watchRouteFlow directamente
           .then(output => {
-            console.log(`[PublishTripActions] watchRoute SUCCESS for ${passengerEmail} (Route ID: ${sr.id}):`, JSON.stringify(output, null, 2));
+            console.log(`[PublishTripActions] watchRouteFlow SUCCESS for ${passengerEmail} (Route ID: ${sr.id}):`, JSON.stringify(output, null, 2));
             return { email: passengerEmail, saved_route_id: sr.id, success: true, output };
           })
           .catch(error => {
-            console.error(`[PublishTripActions] watchRoute FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, error.message ? error.message : JSON.stringify(error, null, 2));
-            return { email: passengerEmail, saved_route_id: sr.id, success: false, error: error.message || 'Unknown error from watchRoute' };
+            console.error(`[PublishTripActions] watchRouteFlow FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, error.message ? error.message : JSON.stringify(error, null, 2));
+            return { email: passengerEmail, saved_route_id: sr.id, success: false, error: error.message || 'Unknown error from watchRouteFlow' };
           })
       );
     }
@@ -197,3 +194,6 @@ export async function processNewTripAndNotifyPassengersAction(
     };
   }
 }
+```
+</changes>
+```
