@@ -5,7 +5,8 @@
 import { createServerActionClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { format, parseISO } from 'date-fns'; // Para formatear fechas
+import { format, parseISO, isValid } from 'date-fns'; // Importar isValid
+import { es } from 'date-fns/locale/es'; // Para formatear fechas al español
 
 const SavedRouteSchemaForDB = z.object({
   origin: z.string().min(1, "El origen es requerido."),
@@ -68,7 +69,7 @@ export async function addSavedRouteAction(
 
   const dataWithAuthenticatedUserEmail = {
     ...routeData,
-    passenger_email: user.email, // Asegurar que el email del usuario autenticado se usa
+    passenger_email: user.email, 
   };
 
   const validatedData = SavedRouteSchemaForDB.safeParse(dataWithAuthenticatedUserEmail);
@@ -133,7 +134,7 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
       .from('saved_routes')
       .delete()
       .eq('id', routeId)
-      .eq('passenger_id', user.id); // Ensure user can only delete their own routes (even with RLS)
+      .eq('passenger_id', user.id); 
 
     if (error) {
       console.error('[deleteSavedRouteAction] Error deleting saved route from DB:', error);
@@ -152,25 +153,22 @@ export async function deleteSavedRouteAction(routeId: string): Promise<{ success
   }
 }
 
-// Esta interfaz es para la salida de la función de búsqueda
 export interface PublishedTripDetails {
   tripId: string;
   driverEmail: string | null;
   driverFullName: string | null;
-  departureDateTime: string; // ISO string
+  departureDateTime: string; 
   origin: string;
   destination: string;
   seatsAvailable: number;
 }
 
-// Este schema es para la entrada de la función de búsqueda
-// NO SE EXPORTA el schema object, solo el tipo inferido
-const FindPublishedMatchingTripsInputSchema = z.object({
+const FindPublishedMatchingTripsInputSchemaInternal = z.object({
   origin: z.string().describe("La ubicación de origen del viaje deseado."),
   destination: z.string().describe("La ubicación de destino del viaje deseado."),
   searchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe estar en formato YYYY-MM-DD.").describe("La fecha deseada para el viaje (YYYY-MM-DD)."),
 });
-export type FindPublishedMatchingTripsInput = z.infer<typeof FindPublishedMatchingTripsInputSchema>;
+export type FindPublishedMatchingTripsInput = z.infer<typeof FindPublishedMatchingTripsInputSchemaInternal>;
 
 
 export async function findPublishedMatchingTripsAction(
@@ -178,24 +176,17 @@ export async function findPublishedMatchingTripsAction(
 ): Promise<PublishedTripDetails[]> {
   console.log(`[findPublishedMatchingTripsAction] Received input: origin="${input.origin}", destination="${input.destination}", searchDate="${input.searchDate}"`);
   
-  // Validación del input usando el schema (uso interno, no requiere exportación del schema)
-  const validation = FindPublishedMatchingTripsInputSchema.safeParse(input);
+  const validation = FindPublishedMatchingTripsInputSchemaInternal.safeParse(input);
   if (!validation.success) {
     console.error('[findPublishedMatchingTripsAction] Invalid input:', validation.error.flatten());
-    // Decide cómo manejar el error de validación, por ejemplo, devolver un array vacío o lanzar un error.
-    // Por ahora, devolveremos un array vacío para que el flujo Genkit pueda manejarlo.
     return [];
   }
-  // Usar validation.data en lugar de input directamente para asegurar que los datos están validados/transformados.
   const validatedInput = validation.data;
 
-
   const supabase = createServerActionClient();
-
-  // Aunque la herramienta podría ser llamada por el sistema (LLM), verificamos si hay un usuario autenticado para logging
   const { data: { user }, error: authError } = await supabase.auth.getUser();
   if (authError || !user) {
-    console.warn('[findPublishedMatchingTripsAction] No authenticated user for this action call, but proceeding (tool context).');
+    console.warn('[findPublishedMatchingTripsAction] No authenticated user for this action call, but proceeding (system context).');
   } else {
     console.log(`[findPublishedMatchingTripsAction] Action called by or in context of user: ${user.id}`);
   }
@@ -212,7 +203,7 @@ export async function findPublishedMatchingTripsAction(
 
     if (rpcError) {
       console.error('[findPublishedMatchingTripsAction] Error calling RPC search_trips_with_driver_info:', JSON.stringify(rpcError, null, 2));
-      return []; // Devuelve vacío en caso de error para que el LLM sepa que no hay coincidencias
+      return []; 
     }
 
     if (!tripsData || tripsData.length === 0) {
@@ -220,25 +211,30 @@ export async function findPublishedMatchingTripsAction(
       return [];
     }
 
-    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. Raw data (first 1000 chars):`, JSON.stringify(tripsData, null, 2).substring(0, 1000));
+    console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. Raw data (first 500 chars):`, JSON.stringify(tripsData, null, 2).substring(0, 500));
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
-      // Parse y formateo de la fecha y hora de salida.
-      // Asumimos que trip.departure_datetime es una cadena ISO válida.
-      let formattedDepartureDateTime = trip.departure_datetime;
+      let formattedDepartureDateTime = trip.departure_datetime; 
       try {
-        // El LLM necesita una fecha y hora claras.
-        formattedDepartureDateTime = format(parseISO(trip.departure_datetime), "dd MMM yyyy 'a las' HH:mm", { locale: es });
-      } catch (e) {
-        console.warn(`[findPublishedMatchingTripsAction] Could not parse departure_datetime "${trip.departure_datetime}" for trip ID ${trip.id}. Using original string.`);
-        // Si falla el parseo, usamos la cadena original. El LLM puede o no manejarla.
+        if (typeof trip.departure_datetime === 'string') {
+          const parsedDate = parseISO(trip.departure_datetime);
+          if (isValid(parsedDate)) {
+            formattedDepartureDateTime = format(parsedDate, "dd MMM yyyy 'a las' HH:mm", { locale: es });
+          } else {
+            console.warn(`[findPublishedMatchingTripsAction] Invalid date after parseISO for departure_datetime "${trip.departure_datetime}" for trip ID ${trip.id}. Using original string.`);
+          }
+        } else {
+           console.warn(`[findPublishedMatchingTripsAction] departure_datetime "${String(trip.departure_datetime)}" is not a string for trip ID ${trip.id}. Using original value.`);
+        }
+      } catch (e: any) { 
+        console.warn(`[findPublishedMatchingTripsAction] Error during date formatting for departure_datetime "${trip.departure_datetime}" for trip ID ${trip.id}: ${e.message}. Using original string.`);
       }
 
       return {
         tripId: trip.id, 
         driverEmail: trip.driver_email || null,
         driverFullName: trip.driver_name || 'Conductor Anónimo',
-        departureDateTime: formattedDepartureDateTime, // Usar la fecha formateada
+        departureDateTime: formattedDepartureDateTime,
         origin: trip.origin,
         destination: trip.destination,
         seatsAvailable: trip.seats_available,
@@ -250,7 +246,7 @@ export async function findPublishedMatchingTripsAction(
 
   } catch (e: any) {
     console.error('[findPublishedMatchingTripsAction] Exception caught in findPublishedMatchingTripsAction:', e);
-    return []; // Devuelve vacío en caso de excepción
+    return []; 
   }
 }
 

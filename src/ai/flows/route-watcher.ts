@@ -13,14 +13,14 @@
 import {ai} from '@/ai/genkit';
 import {z}  from 'genkit';
 import { findPublishedMatchingTripsAction, type FindPublishedMatchingTripsInput, type PublishedTripDetails } from '@/app/dashboard/passenger/saved-routes/actions';
-import { format, parseISO } from 'date-fns'; // Para formatear fechas
+import { Resend } from 'resend';
+import { APP_NAME } from '@/lib/constants';
 
 const WatchRouteInputSchema = z.object({
   passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
   origin: z.string().describe('La ubicación de origen deseada para la ruta.'),
   destination: z.string().describe('La ubicación de destino deseada para la ruta.'),
   date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('La fecha deseada para la ruta (AAAA-MM-DD). Este campo representa la fecha preferida del pasajero para su ruta guardada y es la fecha exacta que se debe usar para buscar viajes coincidentes.'),
-  // driverEmail ya no es necesario aquí, la búsqueda se hará internamente.
 });
 export type WatchRouteInput = z.infer<typeof WatchRouteInputSchema>;
 
@@ -32,21 +32,53 @@ const WatchRouteOutputSchema = z.object({
 export type WatchRouteOutput = z.infer<typeof WatchRouteOutputSchema>;
 
 
-// Herramienta para enviar notificaciones por correo electrónico (se mantiene)
-const sendNotificationTool = ai.defineTool({ 
+const resendApiKey = process.env.RESEND_API_KEY;
+let resend: Resend | null = null;
+
+if (resendApiKey) {
+  resend = new Resend(resendApiKey);
+  console.log('[route-watcher] Resend client initialized.');
+} else {
+  console.warn('[route-watcher] RESEND_API_KEY no está configurada. Las notificaciones por email no funcionarán.');
+}
+
+const sendNotificationTool = ai.defineTool({
   name: 'sendNotificationTool',
   description: 'Envía una notificación por correo electrónico al pasajero sobre un viaje REAL Y PUBLICADO que coincide con su ruta guardada.',
   inputSchema: z.object({
     passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
     message: z.string().describe('El mensaje a enviar en la notificación, que debe incluir detalles del viaje encontrado.'),
+    subject: z.string().describe('El asunto del correo electrónico.'),
   }),
   outputSchema: z.boolean().describe('Si la notificación se envió con éxito.'),
 },
 async (input) => {
-  console.log(`[sendNotificationTool] Enviando notificación a ${input.passengerEmail}: ${input.message}`);
-  // Implementación real de envío de correo aquí (ej. usando un servicio de email)
-  // Por ahora, simulamos éxito.
-  return true;
+  if (!resend) {
+    console.error('[sendNotificationTool] Resend client no está inicializado. No se puede enviar el email.');
+    return false;
+  }
+  console.log(`[sendNotificationTool] Intentando enviar email a ${input.passengerEmail} con asunto: "${input.subject}"`);
+  try {
+    // IMPORTANTE: Para producción, usa un email verificado en tu cuenta de Resend como 'from'.
+    // 'onboarding@resend.dev' es para pruebas y puede tener limitaciones.
+    const { data, error } = await resend.emails.send({
+      from: `${APP_NAME} <onboarding@resend.dev>`, // Reemplaza con tu email verificado para producción
+      to: [input.passengerEmail],
+      subject: input.subject,
+      html: `<p>${input.message.replace(/\n/g, '<br>')}</p>`, // Convertir saltos de línea a <br> para HTML
+      text: input.message, // Versión en texto plano
+    });
+
+    if (error) {
+      console.error('[sendNotificationTool] Error al enviar email con Resend:', JSON.stringify(error, null, 2));
+      return false;
+    }
+    console.log('[sendNotificationTool] Email enviado exitosamente. ID:', data?.id);
+    return true;
+  } catch (e: any) {
+    console.error('[sendNotificationTool] Excepción al enviar email:', JSON.stringify(e, null, 2));
+    return false;
+  }
 });
 
 
@@ -54,17 +86,16 @@ export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutp
   return watchRouteFlow(input);
 }
 
-// Nuevo schema para el input del prompt del LLM, que ahora incluye los viajes encontrados.
 const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
     matchingTripsJson: z.string().describe('Un string JSON que representa un array de objetos PublishedTripDetails. Cada objeto describe un viaje publicado que coincide con el origen, destino y fecha. Si no se encontraron viajes, será un string JSON de un array vacío "[]".')
 });
 
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
-  input: {schema: WatchRoutePromptInputSchema}, // Usamos el nuevo schema
+  input: {schema: WatchRoutePromptInputSchema},
   output: {schema: WatchRouteOutputSchema},
-  tools: [sendNotificationTool], // Solo la herramienta de notificación ahora
-  prompt: `Eres un vigilante de rutas inteligente. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
+  tools: [sendNotificationTool], 
+  prompt: `Eres un vigilante de rutas inteligente para la aplicación ${APP_NAME}. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
 
   Información de la ruta guardada por el pasajero:
   - Correo del Pasajero: {{{passengerEmail}}}
@@ -72,29 +103,32 @@ const prompt = ai.definePrompt({
   - Destino Preferido: {{{destination}}}
   - Fecha Preferida: {{{date}}} (Formato YYYY-MM-DD)
 
-  Viajes Encontrados (string JSON):
+  Viajes Encontrados (string JSON con detalles de viajes publicados):
   {{{matchingTripsJson}}}
 
   Proceso de Decisión OBLIGATORIO:
-  1. Analiza el string JSON en 'matchingTripsJson'. Si representa un array vacío (ej: "[]"), significa que no se encontraron viajes.
-     a. Si no se encontraron viajes:
+  1. Analiza el string JSON en 'matchingTripsJson'.
+     a. Si el string representa un array vacío (ej: "[]"), significa que NO se encontraron viajes publicados que coincidan. En este caso:
         i. Establece 'routeMatchFound' en false.
         ii. Establece 'notificationSent' en false.
         iii. En el campo 'message' del output, indica claramente que no se encontraron viajes publicados para la ruta (Origen: {{{origin}}}, Destino: {{{destination}}}, Fecha: {{{date}}}). Por ejemplo: "No se encontraron viajes publicados para tu ruta de {{{origin}}} a {{{destination}}} en la fecha {{{date}}}. Seguiremos vigilando."
 
-  2. Si 'matchingTripsJson' representa un array con uno o más viajes:
-     a. Selecciona el primer viaje del array como la coincidencia principal.
-     b. Construye un mensaje de notificación claro para el pasajero. El mensaje DEBE incluir:
+  2. Si 'matchingTripsJson' representa un array con UNO O MÁS viajes publicados:
+     a. Selecciona el PRIMER viaje del array como la coincidencia principal.
+     b. Construye un mensaje de notificación claro y amigable para el pasajero. El mensaje DEBE incluir:
+        - Nombre de la aplicación: ${APP_NAME}.
         - Origen del viaje encontrado.
         - Destino del viaje encontrado.
-        - Fecha y Hora de salida del viaje encontrado (formatea el campo 'departureDateTime' del viaje, que es una cadena ISO, a un formato legible como "dd MMM yyyy a las HH:mm").
-        - Nombre del conductor (campo 'driverFullName') si está disponible, o "Conductor Anónimo".
-        - Correo electrónico del conductor (campo 'driverEmail') si está disponible.
+        - Fecha y Hora de salida del viaje encontrado (el campo 'departureDateTime' del viaje encontrado YA ESTÁ FORMATEADO como "dd MMM yyyy a las HH:mm").
+        - Nombre del conductor (campo 'driverFullName'), si está disponible, o "Conductor Anónimo".
+        - Correo electrónico del conductor (campo 'driverEmail'), si está disponible.
         - Número de asientos disponibles (campo 'seatsAvailable').
-     c. Usa la herramienta 'sendNotificationTool' para enviar este mensaje al 'passengerEmail' ({{{passengerEmail}}}) del input.
-     d. Establece 'routeMatchFound' en true.
-     e. Establece 'notificationSent' según el resultado de la herramienta 'sendNotificationTool'.
-     f. En el campo 'message' del output, resume la acción (ej: "Se encontró una coincidencia para tu ruta de {{{origin}}} a {{{destination}}} en la fecha {{{date}}} y se te ha notificado. Detalles del viaje: ...").
+        - Un saludo cordial y una despedida.
+     c. Define un ASUNTO para el correo. Debe ser informativo, por ejemplo: "¡Buenas noticias! Encontramos un viaje para ti en ${APP_NAME}".
+     d. Usa la herramienta 'sendNotificationTool' para enviar este mensaje y asunto al 'passengerEmail' ({{{passengerEmail}}}) del input.
+     e. Establece 'routeMatchFound' en true.
+     f. Establece 'notificationSent' según el resultado de la herramienta 'sendNotificationTool'.
+     g. En el campo 'message' del output, resume la acción (ej: "¡Coincidencia encontrada! Se encontró un viaje de {{{origin}}} a {{{destination}}} para el {{{date}}} y se ha notificado al pasajero."). Si la notificación falló pero el viaje se encontró, indícalo (ej: "Se encontró un viaje, pero la notificación al pasajero falló.").
 
   No inventes viajes. Basa tu decisión EXCLUSIVAMENTE en los datos de 'matchingTripsJson'.
   Asegúrate de que la salida sea un objeto JSON válido que cumpla con WatchRouteOutputSchema.
@@ -118,11 +152,10 @@ const watchRouteFlow = ai.defineFlow(
   async (input) => {
     console.log('[watchRouteFlow] Flow iniciado con input:', JSON.stringify(input, null, 2));
 
-    // Paso 1: Buscar viajes coincidentes programáticamente
     const searchInput: FindPublishedMatchingTripsInput = {
         origin: input.origin,
         destination: input.destination,
-        searchDate: input.date, // input.date ya está en formato YYYY-MM-DD
+        searchDate: input.date,
     };
     console.log('[watchRouteFlow] Llamando a findPublishedMatchingTripsAction con input:', JSON.stringify(searchInput, null, 2));
     let matchingTrips: PublishedTripDetails[] = [];
@@ -131,20 +164,18 @@ const watchRouteFlow = ai.defineFlow(
         console.log(`[watchRouteFlow] findPublishedMatchingTripsAction devolvió ${matchingTrips.length} viaje(s). Datos (primeros 500 chars):`, JSON.stringify(matchingTrips, null, 2).substring(0, 500));
     } catch (error: any) {
         console.error('[watchRouteFlow] Error al llamar a findPublishedMatchingTripsAction:', error.message ? error.message : JSON.stringify(error));
-        // Continuar con un array vacío de viajes para que el LLM pueda informar que no se encontraron.
     }
     
     const matchingTripsJson = JSON.stringify(matchingTrips);
     console.log('[watchRouteFlow] String JSON de viajes coincidentes para el LLM:', matchingTripsJson);
 
-    // Paso 2: Llamar al LLM con los viajes encontrados (o un array vacío)
     const promptInput = {
         ...input,
         matchingTripsJson: matchingTripsJson,
     };
 
     console.log('[watchRouteFlow] Input para el prompt del LLM (incluyendo matchingTripsJson):', JSON.stringify(promptInput, null, 2));
-    const {output} = await prompt(promptInput); // Llama al prompt del LLM
+    const {output} = await prompt(promptInput); 
 
     console.log('[watchRouteFlow] Output del prompt (LLM):', JSON.stringify(output, null, 2));
 
@@ -163,8 +194,3 @@ const watchRouteFlow = ai.defineFlow(
     }
   }
 );
-
-// La herramienta findMatchingTripsTool ya no se define aquí ni se exporta,
-// ya que la lógica de búsqueda ahora está directamente en el flujo.
-// Mantener la exportación de tipos si son necesarios en otros lugares (aunque aquí no lo son)
-// export { FindPublishedMatchingTripsInput, PublishedTripDetails }; // Ya se exportan desde saved-routes/actions.ts
