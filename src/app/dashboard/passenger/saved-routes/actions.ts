@@ -5,7 +5,7 @@
 import { createServerActionClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { format, parseISO, isValid } from 'date-fns'; // Importar isValid
+import { format, parseISO, isValid } from 'date-fns';
 import { es } from 'date-fns/locale/es'; // Para formatear fechas al español
 
 const SavedRouteSchemaForDB = z.object({
@@ -163,12 +163,12 @@ export interface PublishedTripDetails {
   seatsAvailable: number;
 }
 
-const FindPublishedMatchingTripsInputSchemaInternal = z.object({
+const FindPublishedMatchingTripsInputSchema = z.object({
   origin: z.string().describe("La ubicación de origen del viaje deseado."),
   destination: z.string().describe("La ubicación de destino del viaje deseado."),
   searchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe estar en formato YYYY-MM-DD.").describe("La fecha deseada para el viaje (YYYY-MM-DD)."),
 });
-export type FindPublishedMatchingTripsInput = z.infer<typeof FindPublishedMatchingTripsInputSchemaInternal>;
+export type FindPublishedMatchingTripsInput = z.infer<typeof FindPublishedMatchingTripsInputSchema>;
 
 
 export async function findPublishedMatchingTripsAction(
@@ -176,7 +176,7 @@ export async function findPublishedMatchingTripsAction(
 ): Promise<PublishedTripDetails[]> {
   console.log(`[findPublishedMatchingTripsAction] Received input: origin="${input.origin}", destination="${input.destination}", searchDate="${input.searchDate}"`);
   
-  const validation = FindPublishedMatchingTripsInputSchemaInternal.safeParse(input);
+  const validation = FindPublishedMatchingTripsInputSchema.safeParse(input);
   if (!validation.success) {
     console.error('[findPublishedMatchingTripsAction] Invalid input:', validation.error.flatten());
     return [];
