@@ -21,20 +21,21 @@ export const WatchRouteInputSchema = z.object({
 });
 export type WatchRouteInput = z.infer<typeof WatchRouteInputSchema>;
 
-// Schema para la salida directa del LLM
+// Schema para la salida del LLM
 const WatchRouteLLMOutputSchema = z.object({
   routeMatchFound: z.boolean().describe('Si se encontró una ruta coincidente REAL Y PUBLICADA.'),
   message: z.string().describe('Un mensaje que indica el resultado de la vigilancia de la ruta.'),
-  emailSubject: z.string().optional().describe('El asunto del correo electrónico a enviar, si se encontró una coincidencia. Debe ser breve, profesional, conciso y no exceder los 70 caracteres. Evita usar emojis.'),
-  emailMessage: z.string().optional().describe('El cuerpo del mensaje del correo electrónico a enviar, si se encontró una coincidencia. Debe incluir los detalles del viaje y un saludo amigable. Evita usar emojis.'),
+  emailSubject: z.string().optional().describe('El asunto del correo electrónico a enviar, si se encontró una coincidencia. Debe ser breve, profesional, conciso, sin emojis y no exceder los 70 caracteres.'),
+  emailMessage: z.string().optional().describe('El cuerpo del mensaje del correo electrónico a enviar, si se encontró una coincidencia. Debe incluir los detalles del viaje y un saludo amigable. No usar emojis.'),
 });
-export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
+type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 
 // Interfaz para la salida final de la función watchRouteFlow
 export interface WatchRouteOutput {
     routeMatchFound: boolean;
     notificationSent: boolean;
     message: string;
+    emailContent?: { subject: string; body: string }; // Para depuración
 }
 
 const resendApiKey = process.env.RESEND_API_KEY;
@@ -58,7 +59,7 @@ async function sendNotification(
     message: string
 ): Promise<boolean> {
     console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
-    console.log(`[sendNotification FUNCTION] INVOCADA CON: Email: ${passengerEmail}, Subject (primeros 70): "${subject.substring(0,70)}...", Message (primeros 100 chars): "${message.substring(0,100)}..."`);
+    console.log(`[sendNotification FUNCTION] INVOCADA CON: Email: ${passengerEmail}, Subject: "${subject}", Message (primeros 100 chars): "${message.substring(0,100)}..."`);
     console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
 
   if (!resend) {
@@ -85,7 +86,7 @@ async function sendNotification(
       from: `${APP_NAME} <onboarding@resend.dev>`,
       to: [passengerEmail],
       subject: subject,
-      html: `<p>${message.replace(/\n/g, '<br>')}</p>`,
+      html: `<p>${message.replace(/\n/g, '<br>')}</p>`, // Simple HTML formatting
       text: message,
     });
 
@@ -127,11 +128,10 @@ const prompt = ai.definePrompt({
       ii. En el campo 'message' del output, indica claramente que no se encontraron viajes publicados para la ruta (Origen: {{{origin}}}, Destino: {{{destination}}}, Fecha: {{{date}}}). Ejemplo: "No se encontraron viajes publicados para tu ruta de {{{origin}}} a {{{destination}}} en la fecha {{{date}}}. Seguiremos vigilando."
       iii. NO generes 'emailSubject' ni 'emailMessage'. Estos campos deben omitirse.
   3.  Si 'matchingTripsJson' representa un array con UNO O MÁS viajes publicados:
-      a.  Selecciona el PRIMER viaje del array como la coincidencia principal.
-      b.  Establece 'routeMatchFound' en true.
-      c.  En el campo 'message' del output, resume la acción (ej: "¡Coincidencia encontrada! Se encontró un viaje de {{{origin}}} a {{{destination}}} para el {{{date}}}. Se procederá a notificar.").
-      d.  Genera un 'emailSubject' para el correo de notificación. Debe ser breve, conciso, profesional, NO exceder los 70 caracteres y NO usar emojis. Ejemplo: "¡Viaje Encontrado! {{{origin}}} - {{{destination}}}".
-      e.  Genera un 'emailMessage' para el cuerpo del correo. El mensaje DEBE ser amigable e incluir:
+      a.  Establece 'routeMatchFound' en true.
+      b.  En el campo 'message' del output, resume la acción (ej: "¡Coincidencia encontrada! Se encontró un viaje de {{{origin}}} a {{{destination}}} para el {{{date}}}. Se procederá a notificar.").
+      c.  Genera un 'emailSubject' para el correo de notificación. Debe ser breve, conciso, profesional, NO exceder los 70 caracteres y NO usar emojis. Ejemplo: "¡Viaje Encontrado! {{{origin}}} - {{{destination}}}".
+      d.  Genera un 'emailMessage' para el cuerpo del correo. El mensaje DEBE ser amigable e incluir:
           - Saludo al pasajero (usa "Hola," o "Estimado/a pasajero/a,").
           - Confirmación de que se encontró un viaje para su ruta: {{{origin}}} a {{{destination}}} en la fecha {{{date}}}.
           - Detalles del viaje encontrado (del primer viaje en 'matchingTripsJson'):
@@ -155,13 +155,13 @@ const prompt = ai.definePrompt({
   },
 });
 
-export const watchRouteFlow = ai.defineFlow(
+const watchRouteFlow = ai.defineFlow(
   {
     name: 'watchRouteFlowInternal', // Renombrado para evitar confusión
     inputSchema: WatchRouteInputSchema,
-    outputSchema: WatchRouteOutputSchema, // Usamos la interfaz para el output del flujo
+    outputSchema: WatchRouteLLMOutputSchema, // El flow ahora devuelve lo que el LLM genera
   },
-  async (input: WatchRouteInput): Promise<WatchRouteOutput> => {
+  async (input: WatchRouteInput): Promise<WatchRouteLLMOutput> => {
     console.log('[watchRouteFlow] Flow iniciado con input:', JSON.stringify(input, null, 2));
 
     const searchInput: FindPublishedMatchingTripsInput = {
@@ -179,8 +179,8 @@ export const watchRouteFlow = ai.defineFlow(
         }
     } catch (error: any) {
         console.error('[watchRouteFlow] Error al llamar a findPublishedMatchingTripsAction:', error.message ? error.message : JSON.stringify(error));
-        // En caso de error al buscar viajes, aún podríamos querer que el LLM genere un mensaje de "no se encontraron viajes"
-        // o manejarlo como un fallo directo. Por ahora, continuamos con un array vacío de viajes.
+        // En caso de error al buscar viajes, el LLM generará un mensaje de "no se encontraron viajes"
+        // basado en el matchingTripsJson vacío.
     }
     
     const matchingTripsJson = JSON.stringify(matchingTrips);
@@ -199,61 +199,56 @@ export const watchRouteFlow = ai.defineFlow(
 
     if (!llmOutput) {
       console.error('[watchRouteFlow] No se recibió una respuesta estructurada del LLM.');
+      // Retornar un objeto que cumpla con WatchRouteLLMOutputSchema para evitar errores de tipo
       return {
         routeMatchFound: false,
-        notificationSent: false, 
         message: `Error: No se recibió una respuesta estructurada del LLM para la ruta de ${input.origin} a ${input.destination}.`,
+        // emailSubject y emailMessage pueden ser undefined si no se generan
       };
     }
 
-    let notificationWasSent = false;
-    if (llmOutput.routeMatchFound && llmOutput.emailSubject && llmOutput.emailMessage) {
-      console.log(`[watchRouteFlow] Coincidencia encontrada por LLM. Procediendo a llamar a sendNotification. Subject: "${llmOutput.emailSubject}", Message snippet: "${llmOutput.emailMessage.substring(0, 100)}..."`);
-      
-      // Limpieza del subject
-      let cleanedSubject = llmOutput.emailSubject;
-      const emojiRegex = /([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}])/gu;
-      const emojis = cleanedSubject.match(emojiRegex);
-      if (emojis && emojis.length > 1) { // Permitir un emoji
-          let emojiCount = 0;
-          cleanedSubject = Array.from(cleanedSubject).filter(char => {
-              if (emojiRegex.test(char)) {
-                  emojiCount++;
-                  return emojiCount <= 1;
-              }
-              return true;
-          }).join('');
-      }
-      if (cleanedSubject.length > 70) {
-          cleanedSubject = cleanedSubject.substring(0, 67) + "...";
-      }
-
-      notificationWasSent = await sendNotification(
-        input.passengerEmail,
-        cleanedSubject,
-        llmOutput.emailMessage
-      );
-      console.log(`[watchRouteFlow] Resultado de sendNotification: ${notificationWasSent}`);
-      
-    } else if (llmOutput.routeMatchFound) {
-        console.warn("[watchRouteFlow] LLM reportó routeMatchFound=true pero no generó emailSubject o emailMessage. No se intentará la notificación.");
-    } else {
-        console.log("[watchRouteFlow] No se encontró coincidencia de ruta según el LLM o faltan detalles para la notificación. No se enviará correo.");
-    }
-    
-    const finalOutput: WatchRouteOutput = {
-        routeMatchFound: llmOutput.routeMatchFound,
-        notificationSent: notificationWasSent,
-        message: llmOutput.message,
-    };
-    
-    console.log('[watchRouteFlow] Output final del flujo (WatchRouteOutput):', JSON.stringify(finalOutput, null, 2));
-    return finalOutput;
+    return llmOutput;
   }
 );
 
-// Exportar la función principal para que pueda ser llamada desde otros módulos (como Server Actions)
+// Exportar la función principal que llama al flujo y luego maneja la notificación
 export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutput> {
   console.log('[watchRoute] Invoking watchRouteFlow with input:', JSON.stringify(input, null, 2));
-  return await watchRouteFlow(input);
+  const llmResult = await watchRouteFlow(input); // Esto ahora devuelve WatchRouteLLMOutput
+  console.log('[watchRoute] LLM Result:', JSON.stringify(llmResult, null, 2));
+
+  let notificationSent = false;
+  if (llmResult.routeMatchFound && llmResult.emailSubject && llmResult.emailMessage) {
+    // Limpieza y validación del asunto del correo electrónico
+    let cleanedSubject = llmResult.emailSubject;
+    
+    // Eliminar todos los emojis excepto quizás el primero si se desea
+    const emojiRegex = /([\u{1F600}-\u{1F64F}\u{1F300}-\u{1F5FF}\u{1F680}-\u{1F6FF}\u{1F700}-\u{1F77F}\u{1F780}-\u{1F8FF}\u{1F900}-\u{1F9FF}\u{1FA00}-\u{1FA6F}\u{1FA70}-\u{1FAFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}])/gu;
+    cleanedSubject = cleanedSubject.replace(emojiRegex, '').trim(); // Elimina todos los emojis y espacios extra
+
+    if (cleanedSubject.length === 0) {
+        cleanedSubject = `Nuevo Viaje Encontrado: ${input.origin} a ${input.destination}`; // Fallback si el asunto queda vacío
+    } else if (cleanedSubject.length > 70) {
+        cleanedSubject = cleanedSubject.substring(0, 67) + "...";
+    }
+    
+    console.log(`[watchRoute] LLM generó contenido de correo. Asunto: "${cleanedSubject}", Cuerpo (inicio): "${llmResult.emailMessage.substring(0, 100)}..."`);
+    notificationSent = await sendNotification(
+      input.passengerEmail,
+      cleanedSubject,
+      llmResult.emailMessage
+    );
+    console.log(`[watchRoute] Resultado de sendNotification: ${notificationSent}`);
+  } else if (llmResult.routeMatchFound) {
+    console.warn("[watchRoute] Coincidencia de ruta encontrada, pero el LLM no generó emailSubject o emailMessage. No se enviará notificación.");
+  } else {
+    console.log("[watchRoute] No se encontró coincidencia de ruta según el LLM. No se enviará correo.");
+  }
+
+  return {
+    routeMatchFound: llmResult.routeMatchFound,
+    notificationSent: notificationSent,
+    message: llmResult.message,
+    emailContent: (llmResult.emailSubject && llmResult.emailMessage) ? { subject: llmResult.emailSubject, body: llmResult.emailMessage } : undefined
+  };
 }

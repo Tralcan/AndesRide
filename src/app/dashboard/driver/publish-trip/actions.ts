@@ -2,7 +2,7 @@
 'use server';
 
 import { createServerActionClient } from '@/lib/supabase/server';
-import { watchRoute, type WatchRouteInput, type WatchRouteOutput } from '@/ai/flows/route-watcher'; // Asegúrate de importar WatchRouteOutput también
+import { watchRoute, type WatchRouteInput, type WatchRouteOutput } from '@/ai/flows/route-watcher'; 
 import { revalidatePath } from 'next/cache';
 import { format, parseISO } from 'date-fns';
 
@@ -33,14 +33,9 @@ export async function processNewTripAndNotifyPassengersAction(
 
   const { data: { user: driverUser }, error: driverAuthError } = await supabase.auth.getUser();
 
-  if (driverAuthError) {
-    console.error('[PublishTripActions] Authentication error:', JSON.stringify(driverAuthError, null, 2));
-    return { success: false, message: `Error de autenticación: ${driverAuthError.message}` };
-  }
-
-  if (!driverUser) {
-    console.error('[PublishTripActions] No authenticated user found. User is null.');
-    return { success: false, message: 'Usuario no autenticado. No se puede publicar el viaje.' };
+  if (driverAuthError || !driverUser) {
+    console.error('[PublishTripActions] Critical: Could not get driver user from Supabase Auth:', JSON.stringify(driverAuthError, null, 2));
+    return { success: false, message: 'Error crítico: No se pudo autenticar al conductor para publicar el viaje.' };
   }
   
   console.log(`[PublishTripActions] Authenticated driver user ID: ${driverUser.id}`);
@@ -142,7 +137,7 @@ export async function processNewTripAndNotifyPassengersAction(
       };
     }
 
-    const notificationPromises: Promise<WatchRouteOutput & { email: string; saved_route_id: string; success: boolean; error?: string }>[] = [];
+    const notificationPromises: Promise<WatchRouteOutput & { email: string; saved_route_id: string; success?: boolean; error?: string }>[] = [];
     
     for (const sr of finalMatchingSavedRoutes) {
       const passengerEmail = sr.passenger_email!; 
@@ -159,7 +154,7 @@ export async function processNewTripAndNotifyPassengersAction(
         watchRoute(watchInput) // Llamamos a watchRoute directamente
           .then(output => {
             console.log(`[PublishTripActions] watchRoute SUCCESS for ${passengerEmail} (Route ID: ${sr.id}):`, JSON.stringify(output, null, 2));
-            return { email: passengerEmail, saved_route_id: sr.id, success: true, ...output };
+            return { email: passengerEmail, saved_route_id: sr.id, success: output.notificationSent, ...output };
           })
           .catch(error => {
             console.error(`[PublishTripActions] watchRoute FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, error.message ? error.message : JSON.stringify(error, null, 2));
@@ -175,13 +170,13 @@ export async function processNewTripAndNotifyPassengersAction(
       .filter(result => result.status === 'fulfilled')
       .map(result => (result as PromiseFulfilledResult<any>).value);
 
-    const successfulNotifications = fulfilledResults.filter(r => r.success && r.notificationSent).length;
+    const successfulNotifications = fulfilledResults.filter(r => r.success && r.notificationSent).length; // Corrected to check r.notificationSent
     const totalAttempted = finalMatchingSavedRoutes.length;
 
     return {
       success: true,
       tripId: newTrip.id,
-      message: `Viaje publicado con ID: ${newTrip.id}. Se intentó notificar a ${totalAttempted} pasajero(s) (${successfulNotifications} notificaciones enviadas).`,
+      message: `Viaje publicado con ID: ${newTrip.id}. Se intentó notificar a ${totalAttempted} pasajero(s) (${successfulNotifications} notificaciones enviadas correctamente).`,
       notificationResults: fulfilledResults,
     };
 
