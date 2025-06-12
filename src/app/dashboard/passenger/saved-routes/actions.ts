@@ -5,7 +5,7 @@
 import { createServerActionClient } from '@/lib/supabase/server';
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
-import { format } from 'date-fns';
+import { format, parseISO } from 'date-fns'; // Para formatear fechas
 
 const SavedRouteSchemaForDB = z.object({
   origin: z.string().min(1, "El origen es requerido."),
@@ -164,7 +164,8 @@ export interface PublishedTripDetails {
 }
 
 // Este schema es para la entrada de la función de búsqueda
-export const FindPublishedMatchingTripsInputSchema = z.object({
+// NO SE EXPORTA el schema object, solo el tipo inferido
+const FindPublishedMatchingTripsInputSchema = z.object({
   origin: z.string().describe("La ubicación de origen del viaje deseado."),
   destination: z.string().describe("La ubicación de destino del viaje deseado."),
   searchDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "La fecha debe estar en formato YYYY-MM-DD.").describe("La fecha deseada para el viaje (YYYY-MM-DD)."),
@@ -176,6 +177,19 @@ export async function findPublishedMatchingTripsAction(
   input: FindPublishedMatchingTripsInput
 ): Promise<PublishedTripDetails[]> {
   console.log(`[findPublishedMatchingTripsAction] Received input: origin="${input.origin}", destination="${input.destination}", searchDate="${input.searchDate}"`);
+  
+  // Validación del input usando el schema (uso interno, no requiere exportación del schema)
+  const validation = FindPublishedMatchingTripsInputSchema.safeParse(input);
+  if (!validation.success) {
+    console.error('[findPublishedMatchingTripsAction] Invalid input:', validation.error.flatten());
+    // Decide cómo manejar el error de validación, por ejemplo, devolver un array vacío o lanzar un error.
+    // Por ahora, devolveremos un array vacío para que el flujo Genkit pueda manejarlo.
+    return [];
+  }
+  // Usar validation.data en lugar de input directamente para asegurar que los datos están validados/transformados.
+  const validatedInput = validation.data;
+
+
   const supabase = createServerActionClient();
 
   // Aunque la herramienta podría ser llamada por el sistema (LLM), verificamos si hay un usuario autenticado para logging
@@ -188,9 +202,9 @@ export async function findPublishedMatchingTripsAction(
 
   try {
     const rpcParams = {
-      p_origin: input.origin,
-      p_destination: input.destination,
-      p_search_date_str: input.searchDate,
+      p_origin: validatedInput.origin,
+      p_destination: validatedInput.destination,
+      p_search_date_str: validatedInput.searchDate,
     };
     console.log('[findPublishedMatchingTripsAction] Calling RPC search_trips_with_driver_info with params:', JSON.stringify(rpcParams, null, 2));
 
@@ -202,18 +216,29 @@ export async function findPublishedMatchingTripsAction(
     }
 
     if (!tripsData || tripsData.length === 0) {
-      console.log('[findPublishedMatchingTripsAction] No matching trips found by RPC for input:', JSON.stringify(input, null, 2));
+      console.log('[findPublishedMatchingTripsAction] No matching trips found by RPC for input:', JSON.stringify(validatedInput, null, 2));
       return [];
     }
 
     console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. Raw data (first 1000 chars):`, JSON.stringify(tripsData, null, 2).substring(0, 1000));
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
+      // Parse y formateo de la fecha y hora de salida.
+      // Asumimos que trip.departure_datetime es una cadena ISO válida.
+      let formattedDepartureDateTime = trip.departure_datetime;
+      try {
+        // El LLM necesita una fecha y hora claras.
+        formattedDepartureDateTime = format(parseISO(trip.departure_datetime), "dd MMM yyyy 'a las' HH:mm", { locale: es });
+      } catch (e) {
+        console.warn(`[findPublishedMatchingTripsAction] Could not parse departure_datetime "${trip.departure_datetime}" for trip ID ${trip.id}. Using original string.`);
+        // Si falla el parseo, usamos la cadena original. El LLM puede o no manejarla.
+      }
+
       return {
-        tripId: trip.id, // Asegurarse que el RPC devuelve 'id' para el tripId
+        tripId: trip.id, 
         driverEmail: trip.driver_email || null,
         driverFullName: trip.driver_name || 'Conductor Anónimo',
-        departureDateTime: trip.departure_datetime,
+        departureDateTime: formattedDepartureDateTime, // Usar la fecha formateada
         origin: trip.origin,
         destination: trip.destination,
         seatsAvailable: trip.seats_available,

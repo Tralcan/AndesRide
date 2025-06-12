@@ -1,3 +1,4 @@
+
 // src/app/dashboard/actions.ts
 'use server';
 
@@ -55,6 +56,7 @@ export interface PromoDisplayData {
   hasError?: boolean;
 }
 
+// FALLBACK_PROMO_DATA is used internally and does not need to be exported
 const FALLBACK_PROMO_DATA: PromoDisplayData = {
   generatedImageUri: 'https://placehold.co/1200x400.png?text=AndesRide',
   brandName: 'AndesRide',
