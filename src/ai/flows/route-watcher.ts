@@ -1,3 +1,4 @@
+
 'use server';
 /**
  * @fileOverview Un agente de IA para vigilar rutas que notifica a los usuarios cuando los viajes coinciden con sus rutas guardadas.
@@ -13,7 +14,7 @@ import { findPublishedMatchingTripsAction, type FindPublishedMatchingTripsInput,
 import { Resend } from 'resend';
 import { APP_NAME } from '@/lib/constants';
 
-const WatchRouteInputSchema = z.object({
+export const WatchRouteInputSchema = z.object({
   passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
   origin: z.string().describe('La ubicación de origen deseada para la ruta.'),
   destination: z.string().describe('La ubicación de destino deseada para la ruta.'),
@@ -28,6 +29,7 @@ const WatchRouteLLMOutputSchema = z.object({
   emailSubject: z.string().optional().describe('El asunto del correo electrónico a enviar, si se encontró una coincidencia. Debe ser breve, profesional, conciso y no exceder los 70 caracteres. NO usar emojis.'),
   emailMessage: z.string().optional().describe('El cuerpo del mensaje del correo electrónico a enviar, si se encontró una coincidencia. Debe incluir los detalles del viaje y un saludo amigable. NO usar emojis.'),
 });
+export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 
 // Interfaz para la salida final de la función watchRoute
 export interface WatchRouteOutput {
@@ -56,9 +58,9 @@ async function sendNotification(
     subject: string,
     message: string
 ): Promise<boolean> {
-  console.log('*******************************************************************************************************');
-  console.log(`[sendNotification FUNCTION] INVOCADA CON: Email: ${passengerEmail}, Subject: "${subject}", Message (primeros 100 chars): "${message.substring(0,100)}..."`);
-  console.log('*******************************************************************************************************');
+    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
+    console.log(`[sendNotification FUNCTION] INVOCADA CON: Email: ${passengerEmail}, Subject: "${subject}", Message (primeros 100 chars): "${message.substring(0,100)}..."`);
+    console.log('!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!');
 
   if (!resend) {
     console.error('[sendNotification FUNCTION] Resend client no está inicializado. No se puede enviar el email. Verifica la RESEND_API_KEY.');
@@ -77,14 +79,15 @@ async function sendNotification(
     return false;
   }
   console.log(`[sendNotification FUNCTION] Todos los campos requeridos (passengerEmail, subject, message) están presentes.`);
+  console.log(`[sendNotification FUNCTION] Intentando enviar email. De: ${APP_NAME} <onboarding@resend.dev>, Para: ${passengerEmail}, Asunto: "${subject}"`);
 
   try {
     const { data, error } = await resend.emails.send({
       from: `${APP_NAME} <onboarding@resend.dev>`, // Cambia esto por tu dominio verificado en producción
       to: [passengerEmail],
       subject: subject,
-      html: `<p>${message.replace(/\n/g, '<br>')}</p>`,
-      text: message,
+      html: `<p>${message.replace(/\n/g, '<br>')}</p>`, // Asegúrate de que el mensaje tenga formato HTML si es necesario
+      text: message, // Proporcionar una versión de texto plano también es bueno
     });
 
     if (error) {
@@ -122,7 +125,7 @@ const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
-  output: {schema: WatchRouteLLMOutputSchema}, // CORREGIDO AQUÍ
+  output: {schema: WatchRouteLLMOutputSchema}, // CORRECCIÓN AQUÍ
   prompt: `Eres un vigilante de rutas inteligente para la aplicación ${APP_NAME}. Tu tarea es analizar una lista de viajes (proporcionada como un string JSON en 'matchingTripsJson') que ya han sido buscados y coinciden con el origen, destino y fecha de la ruta guardada de un pasajero.
 
   Información de la ruta guardada por el pasajero:
@@ -144,7 +147,7 @@ const prompt = ai.definePrompt({
       a.  Selecciona el PRIMER viaje del array como la coincidencia principal.
       b.  Establece 'routeMatchFound' en true.
       c.  En el campo 'message' del output, resume la acción (ej: "¡Coincidencia encontrada! Se encontró un viaje de {{{origin}}} a {{{destination}}} para el {{{date}}}. Se procederá a notificar.").
-      d.  Genera un 'emailSubject' para el correo de notificación. Debe ser breve, conciso y profesional, y no exceder los 70 caracteres. NO debe contener emojis. Ejemplo: "¡Viaje Encontrado! {{{origin}}} - {{{destination}}}".
+      d.  Genera un 'emailSubject' para el correo de notificación. Debe ser breve, conciso, profesional, NO exceder los 70 caracteres y NO usar emojis. Ejemplo: "¡Viaje Encontrado! {{{origin}}} - {{{destination}}}".
       e.  Genera un 'emailMessage' para el cuerpo del correo. El mensaje DEBE ser amigable e incluir:
           - Saludo al pasajero (usa "Hola," o "Estimado/a pasajero/a,").
           - Confirmación de que se encontró un viaje para su ruta: {{{origin}}} a {{{destination}}} en la fecha {{{date}}}.
