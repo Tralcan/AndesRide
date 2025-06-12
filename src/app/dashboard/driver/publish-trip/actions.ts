@@ -27,15 +27,31 @@ interface BasicSavedRouteForNotification {
 export async function processNewTripAndNotifyPassengersAction(
   tripData: NewTripData
 ): Promise<{ success: boolean; message: string; tripId?: string; notificationResults?: any[] }> {
+  console.log('[PublishTripActions] Action initiated. TripData:', JSON.stringify(tripData, null, 2));
+
   const supabase = createServerActionClient();
-  console.log('[PublishTripActions] processNewTripAndNotifyPassengersAction called with tripData:', JSON.stringify(tripData, null, 2));
-  
+  console.log('[PublishTripActions] Supabase client created for server action.');
+
   const { data: { user: driverUser }, error: driverAuthError } = await supabase.auth.getUser();
-  if (driverAuthError || !driverUser) {
-    console.error('[PublishTripActions] Critical: Could not get driver user from Supabase Auth:', JSON.stringify(driverAuthError, null, 2));
-    return { success: false, message: 'Error crítico: No se pudo autenticar al conductor para publicar el viaje.' };
+
+  if (driverAuthError) {
+    console.error('[PublishTripActions] Authentication error:', JSON.stringify(driverAuthError, null, 2));
+    return { success: false, message: `Error de autenticación: ${driverAuthError.message}` };
   }
-  console.log(`[PublishTripActions] Driver User ID performing action: ${driverUser.id}`);
+
+  if (!driverUser) {
+    console.error('[PublishTripActions] No authenticated user found. User is null.');
+    return { success: false, message: 'Usuario no autenticado. No se puede publicar el viaje.' };
+  }
+  
+  console.log(`[PublishTripActions] Authenticated driver user ID: ${driverUser.id}`);
+  
+  // Aseguramos que el driver_id en tripData coincida con el usuario autenticado
+  // Esto es una buena práctica de seguridad aunque RLS debería manejarlo.
+  if (tripData.driver_id !== driverUser.id) {
+    console.warn(`[PublishTripActions] Mismatch between provided driver_id (${tripData.driver_id}) and authenticated user_id (${driverUser.id}). Using authenticated user_id.`);
+    tripData.driver_id = driverUser.id; // Sobrescribir con el ID autenticado
+  }
 
   const { data: newTrip, error: insertTripError } = await supabase
     .from('trips')
@@ -137,13 +153,6 @@ export async function processNewTripAndNotifyPassengersAction(
         passengerEmail: passengerEmail,
         origin: sr.origin, 
         destination: sr.destination, 
-        // La fecha para watchRoute debe ser la fecha preferida de la ruta guardada, o la fecha del nuevo viaje si la ruta guardada no tiene fecha.
-        // Pero como ya filtramos por `dateConditionMet` para que `sr.preferred_date` sea `newTripDateOnly` o `null`,
-        // y el `findMatchingTripsAction` dentro de `watchRoute` necesita una fecha específica (no puede ser null),
-        // debemos usar `newTripDateOnly` si `sr.preferred_date` es null, o directamente `sr.preferred_date` si lo tiene y coincide.
-        // Dado que el `dateConditionMet` asegura que `sr.preferred_date` (si no es null) es igual a `newTripDateOnly`,
-        // podemos usar `newTripDateOnly` consistentemente aquí, ya que es la fecha del viaje REAL que se está publicando.
-        // El flujo `watchRoute` luego usará esta fecha para buscar viajes.
         date: newTripDateOnly,
       };
       console.log(`[PublishTripActions] Calling watchRoute for passenger ${passengerEmail} (Route ID: ${sr.id}) with input:`, JSON.stringify(watchInput, null, 2));
@@ -156,7 +165,6 @@ export async function processNewTripAndNotifyPassengersAction(
           })
           .catch(error => {
             console.error(`[PublishTripActions] watchRoute FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, error.message ? error.message : JSON.stringify(error, null, 2));
-            // Incluso si watchRoute falla, queremos registrar el intento y el error.
             return { email: passengerEmail, saved_route_id: sr.id, success: false, error: error.message || 'Unknown error from watchRoute' };
           })
       );
@@ -169,7 +177,7 @@ export async function processNewTripAndNotifyPassengersAction(
       .filter(result => result.status === 'fulfilled')
       .map(result => (result as PromiseFulfilledResult<any>).value);
 
-    const successfulNotifications = fulfilledResults.filter(r => r.success && r.output?.routeMatchFound && r.output?.notificationSent).length;
+    const successfulNotifications = fulfilledResults.filter(r => r.success && r.output?.notificationSent).length;
     const totalAttempted = finalMatchingSavedRoutes.length;
 
     return {
@@ -181,7 +189,6 @@ export async function processNewTripAndNotifyPassengersAction(
 
   } catch (error: any) 
   {
-    // Este catch es para errores en la lógica de obtención/filtrado de rutas o al preparar las llamadas a watchRoute.
     console.error('[PublishTripActions] Catch-all error during notification processing:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
     return {
       success: true, // El viaje se publicó, pero la notificación falló.
@@ -190,4 +197,3 @@ export async function processNewTripAndNotifyPassengersAction(
     };
   }
 }
-    
