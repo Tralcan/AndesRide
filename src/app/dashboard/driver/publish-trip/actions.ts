@@ -2,7 +2,7 @@
 'use server';
 
 import { createServerActionClient } from '@/lib/supabase/server';
-import { watchRouteFlow, type WatchRouteInput } from '@/ai/flows/route-watcher'; // Importar watchRouteFlow
+// import { watchRouteFlow, type WatchRouteInput } from '@/ai/flows/route-watcher'; // Temporarily commented out
 import { revalidatePath } from 'next/cache';
 import { format, parseISO } from 'date-fns';
 
@@ -68,6 +68,16 @@ export async function processNewTripAndNotifyPassengersAction(
   revalidatePath('/dashboard/driver/manage-trips');
   revalidatePath('/dashboard/passenger/search-trips'); 
 
+  // Temporarily disable notification logic
+  console.log('[PublishTripActions] Notification logic temporarily disabled for debugging.');
+  return {
+    success: true,
+    tripId: newTrip.id,
+    message: `Viaje publicado con ID: ${newTrip.id}. Notificaciones temporalmente deshabilitadas.`,
+  };
+
+  /*
+  // Original notification logic - TEMPORARILY COMMENTED OUT
   try {
     const newTripDateOnly = format(parseISO(newTrip.departure_datetime), 'yyyy-MM-dd');
     console.log(`[PublishTripActions] New trip details for matching: ID=${newTrip.id}, Origin=${newTrip.origin}, Dest=${newTrip.destination}, DateTime=${newTrip.departure_datetime}, FormattedDateOnly=${newTripDateOnly}`);
@@ -184,8 +194,7 @@ export async function processNewTripAndNotifyPassengersAction(
       notificationResults: fulfilledResults,
     };
 
-  } catch (error: any) 
-  {
+  } catch (error: any) {
     console.error('[PublishTripActions] Catch-all error during notification processing:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
     return {
       success: true, // El viaje se publicó, pero la notificación falló.
@@ -193,7 +202,5 @@ export async function processNewTripAndNotifyPassengersAction(
       message: `Viaje publicado con ID: ${newTrip.id}. Ocurrió un error inesperado durante el proceso de notificación: ${error.message}. Por favor, revisa los logs del servidor.`,
     };
   }
+  */
 }
-```
-</changes>
-```
