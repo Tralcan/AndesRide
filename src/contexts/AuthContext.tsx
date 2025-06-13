@@ -35,12 +35,12 @@ interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+export function AuthProvider({ children }: { children: ReactNode }) {
   const supabase = useMemo(() => createClientComponentClient(), []);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRoleState] = useState<Role | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [isLoading, setIsLoading] = useState(true); // Inicia en true
   const router = useRouter();
   const { toast: showToast } = useToast();
 
@@ -59,9 +59,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (error.message.toLowerCase().includes("infinite recursion detected")) {
         title = "Error Crítico de RLS";
         description = "Se detectó una recursión infinita en las políticas de seguridad (RLS). Por favor, revisa las políticas.";
-      } else if (error.code === 'PGRST116') {
-         console.warn("[AuthContext][fetchUserProfile] No profile found (PGRST116) or RLS check failed for user:", supabaseUser.id);
-         return null;
+      } else if (error.code === 'PGRST116') { // No rows returned - typical for new user
+         console.warn("[AuthContext][fetchUserProfile] No profile found (PGRST116) or RLS check failed for user:", supabaseUser.id, "This is expected for a new user without a profile yet.");
+         return null; // Explicitly return null if no profile, don't toast for this.
       }
        showToast({ title, description, variant: "destructive", duration: 7000 });
       return null;
@@ -81,8 +81,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     let isMounted = true;
-    console.log("[AuthContext][useEffect] Mounting. Setting up onAuthStateChange listener.");
-    setIsLoading(true);
+    console.log("[AuthContext][useEffect] Mounting. Setting up onAuthStateChange listener. Initial isLoading=true.");
+    // setIsLoading(true); // Ya se inicializa en true
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
@@ -90,15 +90,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           console.log("[AuthContext][onAuthStateChange] Component unmounted, ignoring auth event:", event);
           return;
         }
-        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}. Current loading state (before processing): ${isLoading}`);
+        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}.`);
         
-        setSession(currentSession); // Set session first
-
         try {
+          setSession(currentSession); // Set session first
+
           if (currentSession?.user) {
             console.log('[AuthContext][onAuthStateChange] User session exists. Setting basic user, then fetching profile...');
-            // Set basic user info immediately from session
-            setUser(prevUser => ({ ...currentSession.user, profile: prevUser?.profile || null }));
+            const basicUser = { ...currentSession.user, profile: null }; // Start with basic user, profile null
+            setUser(basicUser); // Set basic user from session first
             
             const profile = await fetchUserProfile(currentSession.user);
             
@@ -125,11 +125,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
         } catch (error) {
             console.error('[AuthContext][onAuthStateChange] Exception during auth state processing:', error);
-            // Ensure state is reset in case of an unexpected error
             setUser(null);
             setRoleState(null);
         } finally {
             if (isMounted) {
+              console.log(`[AuthContext][onAuthStateChange][FINALLY] About to set isLoading=false. Current user set: ${!!user}, current role set: ${role}, current session: ${!!session}`);
               setIsLoading(false);
               console.log('[AuthContext][onAuthStateChange] Auth state processed, isLoading set to false.');
             }
@@ -142,10 +142,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       if (!isMounted) return;
       console.log("[AuthContext][useEffect] Initial getSession complete. Session exists:", !!initialSession);
       if (!initialSession) {
-        setIsLoading(false); // If no session, we are done loading for now.
-        console.log("[AuthContext][useEffect] No initial session found, isLoading set to false.");
+        // If no initial session, onAuthStateChange might not fire immediately with null.
+        // So, we explicitly set loading to false here.
+        // The listener will still catch any subsequent login.
+        setIsLoading(false); 
+        console.log("[AuthContext][useEffect] No initial session found by getSession(), isLoading set to false.");
       }
-      // If there is an initial session, onAuthStateChange will be triggered and handle setting user, role, and eventually isLoading to false.
+      // If there IS an initial session, onAuthStateChange will be triggered (event SIGNED_IN or INITIAL_SESSION)
+      // and will handle setting user, role, and eventually isLoading to false in its 'finally' block.
+    }).catch(error => {
+      console.error("[AuthContext][useEffect] Error in initial getSession():", error);
+      if(isMounted) setIsLoading(false); 
     });
 
     return () => {
@@ -153,7 +160,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       console.log("[AuthContext][useEffect] Unmounting. Unsubscribing from auth changes.");
       authListener?.subscription.unsubscribe();
     };
-  }, [fetchUserProfile, supabase]);
+  }, [fetchUserProfile, supabase, user, role, session]); // Added user, role, session to deps for the FINALLY log
 
 
   const login = async () => {
@@ -175,6 +182,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
       setIsLoading(false); 
     }
+    //isLoading will be set to false by onAuthStateChange after redirect
     return { error };
   };
 
@@ -194,7 +202,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setUser(null);
       setRoleState(null);
       setSession(null);
-      // setIsLoading(false); // onAuthStateChange will set isLoading to false
+      // setIsLoading(false); // onAuthStateChange will handle setting isLoading to false
       console.log("[AuthContext] Logout successful, redirecting to /");
       router.push('/'); 
     }
@@ -236,7 +244,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const { error: upsertError, data: upsertData } = await supabase
         .from("profiles")
         .upsert(dataToUpsert)
-        .select() 
+        .select("id, full_name, avatar_url, role") // Ensure select matches UserProfile fields
         .single(); 
       console.timeEnd(`[AuthContext][setRole] Supabase upsert for user ${user.id}`);
 
@@ -271,17 +279,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       console.log("[AuthContext][setRole] Profile upsert successful. New role in DB:", upsertData.role);
       
+      // Construct the profile object correctly
+      const updatedProfile: UserProfile = {
+        id: upsertData.id,
+        fullName: upsertData.full_name,
+        avatarUrl: upsertData.avatar_url,
+        role: upsertData.role as Role,
+      };
+
       setUser(currentUser => {
         if (!currentUser) return null;
         return {
           ...currentUser,
-          profile: {
-            ...currentUser.profile,
-            id: upsertData.id,
-            fullName: upsertData.full_name,
-            avatarUrl: upsertData.avatar_url,
-            role: upsertData.role as Role,
-          } as UserProfile,
+          profile: updatedProfile,
         };
       });
       setRoleState(upsertData.role as Role);
@@ -305,6 +315,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
     } finally {
       setIsLoading(false); 
+      console.log(`[AuthContext][setRole][FINALLY] Role update process finished. isLoading set to false.`);
     }
   };
   
@@ -313,7 +324,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       value={{
         user,
         role,
-        isAuthenticated: !!user && !!session, // isAuthenticated depends on both user and session
+        isAuthenticated: !!user && !!session,
         isLoading,
         login,
         logout,
