@@ -156,7 +156,7 @@ export interface PublishedTripDetails {
   tripId: string;
   driverEmail: string | null;
   driverFullName: string | null;
-  departureDateTime: string; // Formatted string: "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'"
+  departureDateTime: string; // Formatted string: "dd 'de' MMMM 'de' yyyy 'a las' HH:mm hrs (UTC)"
   departureDateFormatted: string; // Formatted string: "dd 'de' MMMM 'de' yyyy" (UTC)
   origin: string;
   destination: string;
@@ -214,25 +214,32 @@ export async function findPublishedMatchingTripsAction(
     console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. Raw data (first 500 chars):`, JSON.stringify(tripsData, null, 2).substring(0, 500));
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
-      let formattedDepartureDateTime = trip.departure_datetime; 
-      let justDateFormatted = validatedInput.searchDate; // Default to searchDate
+      let formattedDepartureDateTime = "Fecha y hora no disponibles"; 
+      let departureDateOnlyFormatted = "Fecha no disponible";
 
-      try {
-        const parsedDate = parseISO(trip.departure_datetime); // This is UTC
-        if (isValid(parsedDate)) {
-          formattedDepartureDateTime = format(parsedDate, "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'", { locale: es });
-          justDateFormatted = format(parsedDate, "dd 'de' MMMM 'de' yyyy", { locale: es }); // Formatted date part (still UTC based)
+      if (trip.departure_datetime) {
+        try {
+          const parsedDateTime = parseISO(trip.departure_datetime); // Esta es UTC
+          if (isValid(parsedDateTime)) {
+            formattedDepartureDateTime = format(parsedDateTime, "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'", { locale: es });
+            departureDateOnlyFormatted = format(parsedDateTime, "dd 'de' MMMM 'de' yyyy", { locale: es });
+          } else {
+            console.warn(`[findPublishedMatchingTripsAction] Invalid date string from DB for trip ${trip.id}: ${trip.departure_datetime}`);
+          }
+        } catch (e) {
+          console.warn(`[findPublishedMatchingTripsAction] Error parsing or formatting date ${trip.departure_datetime} for trip ${trip.id}:`, e);
         }
-      } catch (e) {
-        console.warn(`[findPublishedMatchingTripsAction] Error parsing date ${trip.departure_datetime}, using defaults. Error: ${e}`);
+      } else {
+        console.warn(`[findPublishedMatchingTripsAction] Missing departure_datetime for trip ${trip.id}`);
       }
+      
 
       return {
         tripId: trip.id, 
         driverEmail: trip.driver_email || null,
         driverFullName: trip.driver_name || 'Conductor Anónimo',
         departureDateTime: formattedDepartureDateTime, 
-        departureDateFormatted: justDateFormatted, // Add this new field
+        departureDateFormatted: departureDateOnlyFormatted,
         origin: trip.origin,
         destination: trip.destination,
         seatsAvailable: trip.seats_available,
