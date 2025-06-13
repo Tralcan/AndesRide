@@ -1,4 +1,3 @@
-
 // src/app/dashboard/passenger/saved-routes/actions.ts
 'use server';
 
@@ -158,6 +157,7 @@ export interface PublishedTripDetails {
   driverEmail: string | null;
   driverFullName: string | null;
   departureDateTime: string; // Formatted string: "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'"
+  departureDateFormatted: string; // Formatted string: "dd 'de' MMMM 'de' yyyy" (UTC)
   origin: string;
   destination: string;
   seatsAvailable: number;
@@ -214,22 +214,25 @@ export async function findPublishedMatchingTripsAction(
     console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. Raw data (first 500 chars):`, JSON.stringify(tripsData, null, 2).substring(0, 500));
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
-      let formattedDepartureDateTime = trip.departure_datetime; // Default to ISO string if parsing fails
+      let formattedDepartureDateTime = trip.departure_datetime; 
+      let justDateFormatted = validatedInput.searchDate; // Default to searchDate
+
       try {
-        const parsedDate = parseISO(trip.departure_datetime);
+        const parsedDate = parseISO(trip.departure_datetime); // This is UTC
         if (isValid(parsedDate)) {
-          // Formatear a una cadena legible en UTC
           formattedDepartureDateTime = format(parsedDate, "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'", { locale: es });
+          justDateFormatted = format(parsedDate, "dd 'de' MMMM 'de' yyyy", { locale: es }); // Formatted date part (still UTC based)
         }
       } catch (e) {
-        console.warn(`[findPublishedMatchingTripsAction] Error parsing date ${trip.departure_datetime}, using ISO string. Error: ${e}`);
+        console.warn(`[findPublishedMatchingTripsAction] Error parsing date ${trip.departure_datetime}, using defaults. Error: ${e}`);
       }
 
       return {
         tripId: trip.id, 
         driverEmail: trip.driver_email || null,
         driverFullName: trip.driver_name || 'Conductor Anónimo',
-        departureDateTime: formattedDepartureDateTime, // Usar la cadena UTC formateada
+        departureDateTime: formattedDepartureDateTime, 
+        departureDateFormatted: justDateFormatted, // Add this new field
         origin: trip.origin,
         destination: trip.destination,
         seatsAvailable: trip.seats_available,
@@ -244,4 +247,3 @@ export async function findPublishedMatchingTripsAction(
     return []; 
   }
 }
-
