@@ -19,7 +19,7 @@ import {
   WatchRoutePromptInputSchema,
   type WatchRoutePromptInput,
   type WatchRouteOutput,
-  WatchRouteLLMOutputSchema // Asegúrate que WatchRouteLLMOutputSchema también se importa si no está ya aquí
+  WatchRouteLLMOutputSchema
 } from './route-watcher-types';
 import { z } from 'zod';
 import { format, parseISO } from 'date-fns';
@@ -94,10 +94,10 @@ export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
-  input: {schema: WatchRoutePromptInputSchema}, // Usará el nuevo schema
+  input: {schema: WatchRoutePromptInputSchema},
   output: {schema: WatchRouteLLMOutputSchema },
   prompt: `Eres un vigilante de rutas para ${APP_NAME}.
-Tu tarea es analizar si hay un viaje publicado que coincida con la ruta guardada del pasajero y generar el contenido para una notificación por correo electrónico.
+Tu tarea es determinar si hay un viaje publicado que coincida con la ruta guardada del pasajero y generar el contenido para una notificación por correo electrónico.
 RESPONDE ÚNICAMENTE EN FORMATO JSON. Tu respuesta DEBE seguir el schema Zod: {{outputSchema}}.
 NO REPITAS TEXTO. NO USES emojis. Entrega solo el JSON.
 
@@ -111,27 +111,27 @@ Datos de la ruta guardada del pasajero:
 Se encontró el siguiente viaje coincidente:
 - Origen del Viaje: {{{tripOrigin}}}
 - Destino del Viaje: {{{tripDestination}}}
-- Fecha y Hora Programada del Viaje (UTC): {{{tripDepartureDateTime}}}
-- Fecha Formateada del Viaje: {{{tripDepartureDateFormatted}}}
+- Fecha y Hora Programada del Viaje (UTC): {{{tripDepartureDateTime}}} (Este campo es la cadena "dd de MMMM de yyyy a las HH:mm hrs (UTC)")
+- Fecha Formateada del Viaje (para el asunto): {{{tripDepartureDateFormatted}}} (Este campo es la cadena "dd de MMMM de yyyy")
 - Conductor: {{{tripDriverFullName}}}
 - Asientos Disponibles: {{{tripSeatsAvailable}}}
 
 Instrucciones para el JSON de salida (SI 'tripFound' es true):
 1.  'routeMatchFound': true
 2.  'message': "¡Coincidencia encontrada para tu ruta {{{origin}}} - {{{destination}}} el {{{tripDepartureDateFormatted}}}!"
-3.  'emailSubject': "¡Viaje Encontrado! {{{origin}}} a {{{destination}}} ({{{tripDepartureDateFormatted}}})" (Debe ser MUY CORTO, profesional, max 70 caracteres)
-4.  'emailMessage': "Hola,\\n\\nHemos encontrado un viaje que coincide con tu ruta guardada de {{{origin}}} a {{{destination}}} para el {{{tripDepartureDateFormatted}}}.\\n\\nDetalles del viaje encontrado:\\n- Origen: {{{tripOrigin}}}\\n- Destino: {{{tripDestination}}}\\n- Fecha y Hora Programada: {{{tripDepartureDateTime}}}\\n- Conductor: {{{tripDriverFullName}}}\\n- Asientos Disponibles: {{{tripSeatsAvailable}}}\\n\\nPuedes ver más detalles y solicitar tu asiento en ${APP_NAME}.\\n\\nSaludos,\\nEl equipo de ${APP_NAME}"
+3.  'emailSubject': "¡Viaje Encontrado! {{{origin}}} a {{{destination}}} ({{{tripDepartureDateFormatted}}})" (Debe ser MUY CORTO, profesional, max 70 caracteres. USA {{{tripDepartureDateFormatted}}} para la fecha.)
+4.  'emailMessage': "Hola,\\n\\nHemos encontrado un viaje que coincide con tu ruta guardada de {{{origin}}} a {{{destination}}} para el {{{tripDepartureDateFormatted}}}.\\n\\nDetalles del viaje encontrado:\\n- Origen: {{{tripOrigin}}}\\n- Destino: {{{tripDestination}}}\\n- Fecha y Hora Programada: {{{tripDepartureDateTime}}}\\n- Conductor: {{{tripDriverFullName}}}\\n- Asientos Disponibles: {{{tripSeatsAvailable}}}\\n\\nPuedes ver más detalles y solicitar tu asiento en ${APP_NAME}.\\n\\nSaludos,\\nEl equipo de ${APP_NAME}" (ESTE CAMPO ES OBLIGATORIO SI 'tripFound' es true)
 {{else}}
 No se encontró ningún viaje coincidente para la ruta y fecha especificadas.
 
 Instrucciones para el JSON de salida (SI 'tripFound' es false):
 1.  'routeMatchFound': false
 2.  'message': "No se encontraron viajes para tu ruta {{{origin}}} - {{{destination}}} en la fecha {{{date}}}."
-3.  'emailSubject': "" (o un asunto informativo si se prefiere, pero usualmente no se envía email si no hay match)
+3.  'emailSubject': ""
 4.  'emailMessage': "Lamentablemente, no hemos encontrado viajes que coincidan con tu ruta guardada de {{{origin}}} a {{{destination}}} para la fecha {{{date}}}. Seguiremos buscando por ti."
 {{/if}}
 
-**MUY IMPORTANTE: Asegúrate de generar los campos 'emailSubject' y 'emailMessage' correctamente, especialmente si 'tripFound' es true. No incluyas información extra fuera del JSON.**
+**MUY IMPORTANTE: Asegúrate de generar los campos 'emailSubject' y 'emailMessage' correctamente y por separado. El campo 'emailMessage' ES OBLIGATORIO si 'routeMatchFound' es true. No incluyas información extra fuera del JSON.**
 
 Ejemplo de JSON esperado si hay coincidencia:
 \`\`\`json
@@ -139,7 +139,7 @@ Ejemplo de JSON esperado si hay coincidencia:
   "routeMatchFound": true,
   "message": "¡Coincidencia encontrada para tu ruta Ejemplo Origen - Ejemplo Destino el 30 de junio de 2025!",
   "emailSubject": "¡Viaje Encontrado! Ejemplo Origen a Ejemplo Destino (30 de junio de 2025)",
-  "emailMessage": "Hola,\\n\\nHemos encontrado un viaje que coincide con tu ruta guardada de Ejemplo Origen a Ejemplo Destino para el 30 de junio de 2025.\\n\\nDetalles del viaje encontrado:\\n- Origen: Ejemplo Origen\\n- Destino: Ejemplo Destino\\n- Fecha y Hora Programada: 30 de junio de 2025 a las 10:00 hrs (UTC)\\n- Conductor: Nombre del Conductor\\n- Asientos Disponibles: 2\\n\\nPuedes ver más detalles y solicitar tu asiento en ${APP_NAME}.\\n\\nSaludos,\\nEl equipo de ${APP_NAME}"
+  "emailMessage": "Hola,\\n\\nHemos encontrado un viaje que coincide con tu ruta guardada de Ejemplo Origen a Ejemplo Destino para el 30 de junio de 2025.\\n\\nDetalles del viaje encontrado:\\n- Origen: Ejemplo Origen\\n- Destino: Ejemplo Destino\\n- Fecha y Hora Programada: 30 de junio de 2025 a las 14:00 hrs (UTC)\\n- Conductor: Nombre del Conductor\\n- Asientos Disponibles: 2\\n\\nPuedes ver más detalles y solicitar tu asiento en ${APP_NAME}.\\n\\nSaludos,\\nEl equipo de ${APP_NAME}"
 }
 \`\`\`
 
@@ -154,7 +154,7 @@ Ejemplo de JSON esperado si NO hay coincidencia:
 \`\`\`
 `,
   config: {
-    temperature: 0.2,
+    temperature: 0.2, // Temperatura baja para respuestas más predecibles
     safetySettings: [
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
@@ -191,6 +191,7 @@ const watchRouteFlow = ai.defineFlow(
         return {
             routeMatchFound: false,
             message: `Error al buscar viajes: ${error.message || 'Error desconocido'}`
+            // emailSubject y emailMessage serán undefined
         };
     }
     
@@ -200,12 +201,12 @@ const watchRouteFlow = ai.defineFlow(
         passengerEmail: input.passengerEmail,
         origin: input.origin,
         destination: input.destination,
-        date: input.date,
+        date: input.date, // Fecha deseada por el pasajero (YYYY-MM-DD)
         tripFound: !!firstMatchingTrip,
         tripOrigin: firstMatchingTrip?.origin,
         tripDestination: firstMatchingTrip?.destination,
-        tripDepartureDateTime: firstMatchingTrip?.departureDateTime, // Ya formateado como "30 de junio de 2025 a las 14:00 hrs (UTC)"
-        tripDepartureDateFormatted: firstMatchingTrip?.departureDateFormatted, // Ya formateado como "30 de junio de 2025"
+        tripDepartureDateTime: firstMatchingTrip?.departureDateTime, // Ya formateado como "dd de MMMM de yyyy a las HH:mm hrs (UTC)"
+        tripDepartureDateFormatted: firstMatchingTrip?.departureDateFormatted, // Ya formateado como "dd de MMMM de yyyy"
         tripDriverFullName: firstMatchingTrip?.driverFullName,
         tripSeatsAvailable: firstMatchingTrip?.seatsAvailable,
     };
@@ -219,11 +220,9 @@ const watchRouteFlow = ai.defineFlow(
       console.log('[watchRouteFlow] Output del LLM (WatchRouteLLMOutputSchema):', JSON.stringify(llmOutput, null, 2));
     } catch (error: any) {
       console.error('[watchRouteFlow] Error DURANTE LA LLAMADA al prompt del LLM:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
-      // Devolver un objeto que coincida con WatchRouteLLMOutputSchema en caso de error
       return {
-        routeMatchFound: false, // Asumir que no hay coincidencia si el LLM falla
+        routeMatchFound: false, 
         message: `Error al procesar la solicitud con IA: ${error.message || 'Error desconocido del LLM.'}`,
-        // emailSubject y emailMessage pueden ser undefined o strings vacíos si lo permite el schema
       };
     }
 
@@ -256,35 +255,39 @@ export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutp
 
   let notificationSent = false;
   
+  // Validación más estricta: emailSubject y emailMessage deben ser strings y no estar vacíos
   const hasValidSubject = typeof llmResult.emailSubject === 'string' && llmResult.emailSubject.trim() !== '';
   const hasValidMessage = typeof llmResult.emailMessage === 'string' && llmResult.emailMessage.trim() !== '';
 
   if (llmResult.routeMatchFound && hasValidSubject && hasValidMessage) {
-    let cleanedSubject = llmResult.emailSubject!.trim().replace(/\s+/g, ' ');
+    let cleanedSubject = llmResult.emailSubject!.trim().replace(/\s+/g, ' '); // Limpiar espacios extra
     
-    const maxSubjectLength = 70;
+    const maxSubjectLength = 70; // Límite de caracteres para el asunto
     if (cleanedSubject.length > maxSubjectLength) {
         cleanedSubject = cleanedSubject.substring(0, maxSubjectLength - 3) + "...";
         console.warn(`[watchRoute] emailSubject truncado a: "${cleanedSubject}"`);
     }
     
-    if (cleanedSubject.length === 0 && llmResult.emailSubject !== undefined) { 
+    // Fallback si el subject está vacío después del trim, pero el campo existía.
+    if (cleanedSubject.length === 0 && typeof llmResult.emailSubject === 'string') { 
         const passengerDateFormatted = format(parseISO(input.date), "dd/MM/yyyy", { locale: es });
         cleanedSubject = `¡Viaje Encontrado! ${input.origin} a ${input.destination} (${passengerDateFormatted})`;
         console.warn(`[watchRoute] emailSubject estaba vacío o contenía solo espacios, usando fallback: "${cleanedSubject}"`);
     }
     
     console.log(`[watchRoute] LLM generó asunto y mensaje. Asunto (limpio): "${cleanedSubject}"`);
+    console.log(`[watchRoute] Mensaje del correo (primeros 100 chars): "${llmResult.emailMessage!.substring(0,100)}..."`);
+    
     notificationSent = await sendNotification(
       input.passengerEmail,
       cleanedSubject,
-      llmResult.emailMessage!
+      llmResult.emailMessage! // Sabemos que es válido y no vacío aquí
     );
     console.log(`[watchRoute] Resultado de sendNotification: ${notificationSent}`);
   } else if (llmResult.routeMatchFound) {
     console.warn("[watchRoute] Coincidencia de ruta encontrada, pero el LLM no generó emailSubject y/o emailMessage válidos. No se enviará notificación.");
-    if (!hasValidSubject) console.warn("[watchRoute] Causa: emailSubject falta, no es string o es vacío. Valor recibido:", llmResult.emailSubject);
-    if (!hasValidMessage) console.warn("[watchRoute] Causa: emailMessage falta, no es string o es vacío. Valor recibido:", llmResult.emailMessage);
+    if (!hasValidSubject) console.warn("[watchRoute] Causa: emailSubject falta, no es string o es vacío/solo espacios. Valor recibido:", llmResult.emailSubject);
+    if (!hasValidMessage) console.warn("[watchRoute] Causa: emailMessage falta, no es string o es vacío/solo espacios. Valor recibido:", llmResult.emailMessage);
   } else {
     console.log("[watchRoute] No se encontró coincidencia de ruta según el LLM (o hubo un error en el LLM). No se enviará correo.");
   }
@@ -300,4 +303,3 @@ export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutp
 }
 
 export type { WatchRouteInput, WatchRouteOutput };
-
