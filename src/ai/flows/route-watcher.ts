@@ -101,39 +101,55 @@ Datos del pasajero:
 - Email: {{{passengerEmail}}}
 - Origen: {{{origin}}}
 - Destino: {{{destination}}}
-- Fecha: {{{date}}}
+- Fecha deseada: {{{date}}}
 
-Viajes publicados coincidentes (JSON string):
+Viajes publicados coincidentes (JSON string, usa el PRIMER viaje si hay varios):
 {{{matchingTripsJson}}}
 
-Proceso:
-1.  Si 'matchingTripsJson' está vacío o es "[]", no hay coincidencias.
-    -   'routeMatchFound' debe ser \`false\`.
-    -   'message' debe indicar que no se encontraron viajes.
-    -   OMITE 'emailSubject' y 'emailMessage'.
-2.  Si hay coincidencias, usa el PRIMER viaje del JSON.
-    -   'routeMatchFound' debe ser \`true\`.
-    -   'message' debe resumir la acción.
-    -   'emailSubject': Crea un ASUNTO MUY CORTO Y PROFESIONAL (máx. 70 caracteres). Ejemplo: "¡Viaje Encontrado! {{{origin}}} a {{{destination}}}".
-    -   'emailMessage': Crea el CUERPO DEL EMAIL. Este campo es OBLIGATORIO si 'routeMatchFound' es true.
-        -   Incluye:
-            -   Saludo.
-            -   Confirmación: Viaje de {{{origin}}} a {{{destination}}} para {{{date}}}.
-            -   Detalles del primer viaje en 'matchingTripsJson':
-                -   Fecha y Hora Programada: Usa 'departureDateTime' (cadena ISO UTC). Formatea como "DD de Mes de AAAA a las HH:mm (UTC)". Ejemplo: "30 de junio de 2025 a las 14:00 (UTC)".
-                -   Conductor: 'driverFullName'.
-                -   Email Conductor: 'driverEmail' (si existe).
-                -   Asientos: 'seatsAvailable'.
-            -   Llamado a la acción: "Revisa y reserva en ${APP_NAME}."
-            -   Despedida.
+Instrucciones para generar el JSON:
 
-Ejemplo de JSON esperado si hay coincidencia:
+1.  Campo 'routeMatchFound' (boolean):
+    -   \`true\` si 'matchingTripsJson' NO está vacío y NO es "[]".
+    -   \`false\` si 'matchingTripsJson' está vacío o es "[]".
+
+2.  Campo 'message' (string):
+    -   Si 'routeMatchFound' es \`true\`: "Coincidencia encontrada para tu ruta {{{origin}}} - {{{destination}}}."
+    -   Si 'routeMatchFound' es \`false\`: "No se encontraron viajes para tu ruta {{{origin}}} - {{{destination}}} en la fecha {{{date}}}."
+
+3.  Campo 'emailSubject' (string, OPCIONAL):
+    -   SOLO si 'routeMatchFound' es \`true\`.
+    -   Debe ser MUY CORTO y profesional. Ejemplo: "¡Viaje Encontrado! {{{origin}}} a {{{destination}}}".
+    -   No exceder los 70 caracteres.
+
+4.  Campo 'emailMessage' (string, OBLIGATORIO si 'routeMatchFound' es \`true\`):
+    -   SOLO si 'routeMatchFound' es \`true\`.
+    -   Debe contener:
+        -   Un saludo como "Hola,".
+        -   Mencionar que se encontró un viaje para la ruta y fecha deseada.
+        -   Detalles del PRIMER viaje encontrado en 'matchingTripsJson':
+            -   Origen del viaje.
+            -   Destino del viaje.
+            -   Fecha y Hora Programada (usa el campo 'departureDateTime' del JSON del viaje tal cual).
+            -   Nombre del Conductor ('driverFullName').
+            -   Asientos Disponibles ('seatsAvailable').
+        -   Un llamado a la acción: "Revisa y reserva en ${APP_NAME}."
+        -   Una despedida como "Saludos,\nEl equipo de ${APP_NAME}".
+
+Ejemplo de JSON esperado si hay coincidencia (los valores de ejemplo deben ser reemplazados por los datos reales):
 \`\`\`json
 {
   "routeMatchFound": true,
-  "message": "¡Coincidencia encontrada y notificación preparada!",
-  "emailSubject": "¡Viaje Encontrado! Origen Ejemplo - Destino Ejemplo",
-  "emailMessage": "Hola,\\n\\nHemos encontrado un viaje: Origen Ejemplo a Destino Ejemplo para 2025-07-15.\\nDetalles:\\n- Fecha y Hora Programada: 15 de julio de 2025 a las 10:00 (UTC)\\n- Conductor: Juan Perez\\n- Asientos: 2\\nRevisa y reserva en ${APP_NAME}.\\nSaludos,\\nEl equipo de ${APP_NAME}"
+  "message": "Coincidencia encontrada para tu ruta Ejemplo Origen - Ejemplo Destino.",
+  "emailSubject": "¡Viaje Encontrado! Ejemplo Origen - Ejemplo Destino",
+  "emailMessage": "Hola,\\n\\nHemos encontrado un viaje para tu ruta de Ejemplo Origen a Ejemplo Destino para la fecha Ejemplo Fecha.\\nDetalles del viaje encontrado:\\n- Origen: Ejemplo Origen\\n- Destino: Ejemplo Destino\\n- Fecha y Hora Programada: 2025-07-15T10:00:00Z\\n- Conductor: Juan Perez\\n- Asientos Disponibles: 2\\n\\nRevisa y reserva en ${APP_NAME}.\\n\\nSaludos,\\nEl equipo de ${APP_NAME}"
+}
+\`\`\`
+
+Ejemplo de JSON esperado si NO hay coincidencia:
+\`\`\`json
+{
+  "routeMatchFound": false,
+  "message": "No se encontraron viajes para tu ruta Ejemplo Origen - Ejemplo Destino en la fecha Ejemplo Fecha."
 }
 \`\`\`
 `,
