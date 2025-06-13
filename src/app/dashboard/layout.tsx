@@ -14,15 +14,13 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { isAuthenticated, isLoading, role, user } = useAuth(); // Add user for logging
+  const { isAuthenticated, isLoading, role, user } = useAuth(); 
   const router = useRouter();
 
-  console.log('[DashboardLayout] Rendering. Auth state from useAuth():', { isAuthenticated, isLoading, role, userId: user?.id });
+  console.log('[DashboardLayout] Rendering. Auth state:', { isAuthenticated, isLoading, role, userId: user?.id });
 
   useEffect(() => {
-    // This useEffect is primarily for enforcing auth on the dashboard.
-    // The AuthRedirector handles more general redirection logic.
-    console.log('[DashboardLayout] useEffect triggered. Auth state:', { isAuthenticated, isLoading, role });
+    console.log('[DashboardLayout] useEffect triggered. isLoading:', isLoading, 'isAuthenticated:', isAuthenticated, 'role:', role);
     if (!isLoading) {
       if (!isAuthenticated) {
         console.log('[DashboardLayout] Not authenticated, redirecting to /');
@@ -30,12 +28,17 @@ export default function DashboardLayout({
       } else if (!role) {
         console.log('[DashboardLayout] Authenticated but no role, redirecting to /role-selection');
         router.replace("/role-selection");
+      } else {
+        console.log('[DashboardLayout] Authenticated with role, proceeding to render dashboard.');
       }
     }
   }, [isAuthenticated, isLoading, role, router]);
 
   if (isLoading || !isAuthenticated || !role) {
-    console.log('[DashboardLayout] Showing skeleton loader. Auth state:', { isAuthenticated, isLoading, role });
+    console.log('[DashboardLayout] Showing skeleton loader. isLoading:', isLoading, 'isAuthenticated:', isAuthenticated, 'role:', role);
+    // Si isLoading es true, es normal mostrar el skeleton.
+    // Si isLoading es false pero no está autenticado o no tiene rol, el redirect debería ocurrir, 
+    // pero el skeleton evita un flash de contenido no autorizado.
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
         <Skeleton className="h-12 w-12 rounded-full mb-4" />
@@ -46,7 +49,7 @@ export default function DashboardLayout({
     );
   }
   
-  console.log('[DashboardLayout] Rendering dashboard content. Auth state:', { isAuthenticated, isLoading, role });
+  console.log('[DashboardLayout] Rendering dashboard content because user is authenticated and has a role.');
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full bg-muted/40 overflow-hidden">
@@ -63,4 +66,3 @@ export default function DashboardLayout({
     </SidebarProvider>
   );
 }
-

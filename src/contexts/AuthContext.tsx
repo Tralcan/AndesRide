@@ -1,4 +1,3 @@
-
 // src/contexts/AuthContext.tsx
 "use client";
 
@@ -36,14 +35,14 @@ interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: ReactNode }) {
+export function AuthProvider({ children }: { children: React.ReactNode }) { // Corrected React.Node to React.ReactNode
   const supabase = useMemo(() => createClientComponentClient(), []);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
   const [role, setRoleState] = useState<Role | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const router = useRouter();
-  const { toast: showToast } = useToast(); // Renamed to avoid conflict and clarify usage
+  const { toast: showToast } = useToast();
 
   const fetchUserProfile = useCallback(async (supabaseUser: SupabaseUser): Promise<UserProfile | null> => {
     console.log("[AuthContext][fetchUserProfile] Fetching profile for user:", supabaseUser.id);
@@ -60,7 +59,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (error.message.toLowerCase().includes("infinite recursion detected")) {
         title = "Error Crítico de RLS";
         description = "Se detectó una recursión infinita en las políticas de seguridad (RLS). Por favor, revisa las políticas.";
-      } else if (error.code === 'PGRST116') { 
+      } else if (error.code === 'PGRST116') {
          console.warn("[AuthContext][fetchUserProfile] No profile found (PGRST116) or RLS check failed for user:", supabaseUser.id);
          return null;
       }
@@ -83,6 +82,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let isMounted = true;
     console.log("[AuthContext][useEffect] Mounting. Setting up onAuthStateChange listener.");
+    setIsLoading(true); // Ensure loading is true at the start of effect
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
@@ -90,19 +90,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           console.log("[AuthContext][onAuthStateChange] Component unmounted, ignoring auth event:", event);
           return;
         }
-        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}.`);
+        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}. Current loading state: ${isLoading}`);
         
         setSession(currentSession);
 
         if (currentSession?.user) {
+          console.log('[AuthContext][onAuthStateChange] User session exists. Fetching profile...');
           setUser(prevUser => ({ ...currentSession.user, profile: prevUser?.profile || null }));
           
-          if (isLoading && isMounted) {
-            console.log('[AuthContext][onAuthStateChange] User session confirmed. Setting isLoading to false BEFORE profile fetch.');
-            setIsLoading(false);
-          }
-          
-          console.log('[AuthContext][onAuthStateChange] Fetching profile for user:', currentSession.user.id);
           const profile = await fetchUserProfile(currentSession.user);
           
           if (!isMounted) { 
@@ -113,48 +108,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           if (profile) {
             setUser(prevUser => prevUser ? ({ ...prevUser, profile }) : ({...currentSession.user, profile }));
             setRoleState(profile.role || null);
-            console.log('[AuthContext][onAuthStateChange] User profile and role updated after fetch. Role:', profile.role);
+            console.log('[AuthContext][onAuthStateChange] User profile and role updated. Role:', profile.role);
           } else {
             setRoleState(null); 
-            console.log('[AuthContext][onAuthStateChange] No profile found or error during fetch. Resetting local role state.');
+            console.warn('[AuthContext][onAuthStateChange] No profile found or error during fetch. Role set to null.');
           }
-
         } else {
           console.log('[AuthContext][onAuthStateChange] No user in session. Clearing user and role.');
           setUser(null);
           setRoleState(null);
-          if (isLoading && isMounted) { 
-            console.log('[AuthContext][onAuthStateChange] No user session. Setting isLoading to false.');
-            setIsLoading(false); 
-          }
+        }
+        if (isMounted) {
+          setIsLoading(false);
+          console.log('[AuthContext][onAuthStateChange] Auth state processed, isLoading set to false.');
         }
       }
     );
 
-    (async () => {
-      if (isMounted && isLoading) { 
-        console.log("[AuthContext][useEffect] Performing initial session check as isLoading is true.");
-        const { data: { session: initialSession } } = await supabase.auth.getSession();
-        console.log("[AuthContext][useEffect] Initial session check result. Session available:", !!initialSession);
-        if (!initialSession?.user) { 
-          if (isMounted && isLoading) { 
-             console.log("[AuthContext][useEffect] No initial session, setting isLoading to false.");
-             setIsLoading(false);
-          }
-        }
+    // Initial check for session on mount
+    supabase.auth.getSession().then(({ data: { session: initialSession } }) => {
+      if (!isMounted) return;
+      console.log("[AuthContext][useEffect] Initial getSession complete. Session exists:", !!initialSession);
+      if (!initialSession) {
+        setIsLoading(false);
+        console.log("[AuthContext][useEffect] No initial session found, isLoading set to false.");
       }
-    })();
+      // If there is a session, onAuthStateChange will handle setting user, role, and isLoading
+    });
 
     return () => {
       isMounted = false;
       console.log("[AuthContext][useEffect] Unmounting. Unsubscribing from auth changes.");
       authListener?.subscription.unsubscribe();
     };
-  }, [fetchUserProfile, supabase, isLoading]);
+  }, [fetchUserProfile, supabase]);
 
 
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
+    setIsLoading(true); // Set loading true before initiating OAuth
     const redirectURL = window.location.origin + "/auth/callback";
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -169,12 +161,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
         variant: "destructive",
       });
+      setIsLoading(false); // Reset loading state on error
     }
+    // setIsLoading(false) will be handled by onAuthStateChange after successful redirect
     return { error };
   };
 
   const logout = async () => {
     console.log("[AuthContext] Attempting logout.");
+    setIsLoading(true);
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("[AuthContext] Error during signOut:", error);
@@ -183,10 +178,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         description: error.message || "No se pudo cerrar la sesión. Inténtalo de nuevo.",
         variant: "destructive",
       });
+      setIsLoading(false);
     } else {
       setUser(null);
       setRoleState(null);
       setSession(null);
+      setIsLoading(false); // Ensure isLoading is false after state updates
+      console.log("[AuthContext] Logout successful, redirecting to /");
       router.push('/'); 
     }
     return { error };
@@ -200,6 +198,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return;
     }
 
+    setIsLoading(true); // Indicate loading state
     const toastControl = showToast({
       title: "Actualizando Rol",
       description: `Estableciendo rol a ${newRole}... Por favor, espera.`,
@@ -226,7 +225,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const { error: upsertError, data: upsertData } = await supabase
         .from("profiles")
         .upsert(dataToUpsert)
-        .select(); 
+        .select() 
+        .single(); 
       console.timeEnd(`[AuthContext][setRole] Supabase upsert for user ${user.id}`);
 
       console.log("[AuthContext][setRole] Upsert result. Error:", upsertError ? JSON.stringify(upsertError, null, 2) : "No Error. Data:", upsertData ? JSON.stringify(upsertData, null, 2) : "No Data");
@@ -235,48 +235,67 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error("[AuthContext][setRole] Error upserting profile:", JSON.stringify(upsertError, null, 2));
         let toastMessage = `No se pudo guardar tu rol: ${upsertError.message}`;
         if (upsertError.message.includes("violates row-level security policy") || upsertError.message.includes("permission denied")) { 
-            toastMessage = "Error de RLS: No tienes permiso para actualizar tu perfil. Revisa las políticas de INSERT/UPDATE en la tabla 'profiles'.";
+            toastMessage = "Error de RLS: No tienes permiso para actualizar tu perfil. Verifica las políticas de INSERT/UPDATE en la tabla 'profiles'.";
         }
         toastControl.update({
+          id: toastControl.id,
           title: "Error al Guardar Rol",
           description: toastMessage,
           variant: "destructive",
           duration: 9000,
         });
+        setIsLoading(false);
         return; 
       }
       
-      console.log("[AuthContext][setRole] Profile upsert successful for role:", newRole);
+      if (!upsertData) {
+        console.error("[AuthContext][setRole] Upsert successful but no data returned from DB. This should not happen if RLS is permissive enough for SELECT after UPSERT.");
+        toastControl.update({
+          id: toastControl.id,
+          title: "Error Inesperado",
+          description: "El rol se guardó, pero no se pudo confirmar la actualización. Intenta recargar la página.",
+          variant: "destructive",
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      console.log("[AuthContext][setRole] Profile upsert successful. New role in DB:", upsertData.role);
       
-      setRoleState(newRole);
       setUser(currentUser => {
-        if (currentUser) {
-          const updatedProfile: UserProfile = {
-            ...(currentUser.profile || { id: currentUser.id, fullName: null, avatarUrl: null }), 
-            role: newRole, 
-            fullName: userFullName || currentUser.profile?.fullName || "Usuario Anónimo",
-            avatarUrl: userAvatarUrl || currentUser.profile?.avatarUrl
-          };
-          return { ...currentUser, profile: updatedProfile };
-        }
-        return null;
+        if (!currentUser) return null;
+        return {
+          ...currentUser,
+          profile: {
+            ...currentUser.profile,
+            id: upsertData.id,
+            fullName: upsertData.full_name,
+            avatarUrl: upsertData.avatar_url,
+            role: upsertData.role as Role,
+          } as UserProfile,
+        };
       });
+      setRoleState(upsertData.role as Role);
 
       toastControl.update({
+        id: toastControl.id,
         title: "Rol Establecido Correctamente",
         description: `Tu rol ha sido configurado como ${newRole}. Redirigiendo...`,
         variant: "default",
       });
       console.log("[AuthContext][setRole] Role set locally. Navigating to /dashboard. New local role:", newRole);
-      router.push("/dashboard");
+      router.push("/dashboard"); 
 
     } catch (error: any) {
       console.error("[AuthContext][setRole] EXCEPTION during setRole process:", error);
       toastControl.update({
+        id: toastControl.id,
         title: "Error Inesperado al Establecer Rol",
         description: error.message || "Ocurrió un error desconocido al actualizar tu rol.",
         variant: "destructive",
       });
+    } finally {
+      setIsLoading(false); 
     }
   };
   
@@ -299,6 +318,5 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     </AuthContext.Provider>
   );
 }
-    
-
-    
+// Asegúrate de que no haya más código después de este cierre de llave.
+// El código de AuthRedirector.tsx no debe estar aquí.
