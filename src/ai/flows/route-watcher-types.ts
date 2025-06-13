@@ -18,8 +18,20 @@ export const WatchRouteLLMOutputSchema = z.object({
 });
 export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 
-export const WatchRoutePromptInputSchema = WatchRouteInputSchema.extend({
-    matchingTripsJson: z.string().describe('Un string JSON que representa un array de objetos PublishedTripDetails. Cada objeto describe un viaje publicado que coincide con el origen, destino y fecha. Si no se encontraron viajes, será un string JSON de un array vacío "[]".')
+// Actualizado para pasar campos individuales del primer viaje en lugar de un JSON string
+export const WatchRoutePromptInputSchema = z.object({
+    passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
+    origin: z.string().describe('La ubicación de origen deseada para la ruta del pasajero.'),
+    destination: z.string().describe('La ubicación de destino deseada para la ruta del pasajero.'),
+    date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).describe('La fecha deseada para la ruta del pasajero (AAAA-MM-DD).'),
+    // Detalles del primer viaje encontrado, opcionales si no hay coincidencia
+    tripFound: z.boolean().describe('Indica si se encontró un viaje coincidente.'),
+    tripOrigin: z.string().optional().describe('Origen del viaje encontrado.'),
+    tripDestination: z.string().optional().describe('Destino del viaje encontrado.'),
+    tripDepartureDateTime: z.string().optional().describe('Fecha y hora de salida del viaje encontrado (ya formateado).'),
+    tripDepartureDateFormatted: z.string().optional().describe('Fecha de salida del viaje encontrado (formato dd de MMMM de yyyy).'),
+    tripDriverFullName: z.string().optional().describe('Nombre completo del conductor del viaje encontrado.'),
+    tripSeatsAvailable: z.number().optional().describe('Asientos disponibles en el viaje encontrado.'),
 });
 export type WatchRoutePromptInput = z.infer<typeof WatchRoutePromptInputSchema>;
 
