@@ -157,7 +157,7 @@ export interface PublishedTripDetails {
   tripId: string;
   driverEmail: string | null;
   driverFullName: string | null;
-  departureDateTime: string; 
+  departureDateTime: string; // ISO string UTC
   origin: string;
   destination: string;
   seatsAvailable: number;
@@ -214,27 +214,15 @@ export async function findPublishedMatchingTripsAction(
     console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. Raw data (first 500 chars):`, JSON.stringify(tripsData, null, 2).substring(0, 500));
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
-      let formattedDepartureDateTime = trip.departure_datetime; 
-      try {
-        if (typeof trip.departure_datetime === 'string') {
-          const parsedDate = parseISO(trip.departure_datetime);
-          if (isValid(parsedDate)) {
-            formattedDepartureDateTime = format(parsedDate, "dd MMM yyyy 'a las' HH:mm", { locale: es });
-          } else {
-            console.warn(`[findPublishedMatchingTripsAction] Invalid date after parseISO for departure_datetime "${trip.departure_datetime}" for trip ID ${trip.id}. Using original string.`);
-          }
-        } else {
-           console.warn(`[findPublishedMatchingTripsAction] departure_datetime "${String(trip.departure_datetime)}" is not a string for trip ID ${trip.id}. Using original value.`);
-        }
-      } catch (e: any) { 
-        console.warn(`[findPublishedMatchingTripsAction] Error during date formatting for departure_datetime "${trip.departure_datetime}" for trip ID ${trip.id}: ${e.message}. Using original string.`);
-      }
+      // Mantener departureDateTime como la cadena ISO UTC de la base de datos.
+      // El LLM la recibirá así y se le instruirá cómo usarla.
+      const departureDateTimeISO = trip.departure_datetime; 
 
       return {
         tripId: trip.id, 
         driverEmail: trip.driver_email || null,
         driverFullName: trip.driver_name || 'Conductor Anónimo',
-        departureDateTime: formattedDepartureDateTime,
+        departureDateTime: departureDateTimeISO, // Usar la cadena ISO UTC directamente
         origin: trip.origin,
         destination: trip.destination,
         seatsAvailable: trip.seats_available,

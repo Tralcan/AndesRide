@@ -1,3 +1,4 @@
+
 // src/ai/flows/route-watcher.ts
 'use server';
 /**
@@ -100,8 +101,9 @@ Información de la ruta guardada por el pasajero:
 - Destino Preferido: {{{destination}}}
 - Fecha Preferida: {{{date}}} (Formato YYYY-MM-DD)
 
-Viajes Publicados Coincidentes (string JSON):
+Viajes Publicados Coincidentes (string JSON con objetos PublishedTripDetails):
 {{{matchingTripsJson}}}
+Cada objeto PublishedTripDetails incluye 'departureDateTime' como una cadena ISO UTC (ej: "2025-06-30T14:00:00.000Z").
 
 RESPONDE ÚNICAMENTE EN FORMATO JSON. Tu respuesta DEBE seguir la siguiente estructura Zod:
 {{outputSchema}}
@@ -132,7 +134,7 @@ Basado en la información anterior, sigue este PROCESO DE DECISIÓN OBLIGATORIO:
                 *   Saludo al pasajero (ej: "Hola,").
                 *   Confirmación del viaje encontrado: De {{{origin}}} a {{{destination}}} para el {{{date}}}.
                 *   Detalles específicos del viaje (del PRIMER viaje en 'matchingTripsJson'):
-                    *   Hora de salida: (usa el campo 'departureDateTime' del JSON, que ya está formateado).
+                    *   Fecha y Hora Programada: (Usa el valor exacto del campo 'departureDateTime' del viaje en 'matchingTripsJson'. Por ejemplo, si 'departureDateTime' es "2025-06-30T14:00:00.000Z", el correo debe decir "Fecha y hora programada: 2025-06-30T14:00:00.000Z". Puedes añadir una nota como "(Hora en UTC)").
                     *   Nombre del conductor: (usa el campo 'driverFullName' del JSON).
                     *   Correo del conductor: (usa el campo 'driverEmail' del JSON, si está disponible y no es null; si es null, omite esta línea o indica "no disponible").
                     *   Asientos disponibles: (usa el campo 'seatsAvailable' del JSON).
@@ -257,3 +259,4 @@ export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutp
 }
 
 export type { WatchRouteInput, WatchRouteOutput };
+
