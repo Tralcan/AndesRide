@@ -134,7 +134,7 @@ Basado en la información anterior, sigue este PROCESO DE DECISIÓN OBLIGATORIO:
                 *   Saludo al pasajero (ej: "Hola,").
                 *   Confirmación del viaje encontrado: De {{{origin}}} a {{{destination}}} para el {{{date}}}.
                 *   Detalles específicos del viaje (del PRIMER viaje en 'matchingTripsJson'):
-                    *   Fecha y Hora Programada: (Usa el valor exacto del campo 'departureDateTime' del viaje en 'matchingTripsJson'. Por ejemplo, si 'departureDateTime' es "2025-06-30T14:00:00.000Z", el correo debe decir "Fecha y hora programada: 2025-06-30T14:00:00.000Z". Puedes añadir una nota como "(Hora en UTC)").
+                    *   Fecha y Hora Programada: (Toma el valor del campo 'departureDateTime' del viaje en 'matchingTripsJson', que es una cadena ISO UTC como "2025-06-30T14:00:00.000Z". Formatea esta fecha y hora en el correo de la siguiente manera: "DD de Mes de AAAA a las HH:mm (UTC)". Por ejemplo, si 'departureDateTime' es "2025-06-30T14:00:00.000Z", el correo debe decir "30 de junio de 2025 a las 14:00 (UTC)").
                     *   Nombre del conductor: (usa el campo 'driverFullName' del JSON).
                     *   Correo del conductor: (usa el campo 'driverEmail' del JSON, si está disponible y no es null; si es null, omite esta línea o indica "no disponible").
                     *   Asientos disponibles: (usa el campo 'seatsAvailable' del JSON).
