@@ -1,6 +1,5 @@
 // src/ai/flows/route-watcher-types.ts
 import { z } from 'zod';
-import type { PublishedTripDetails } from '@/app/dashboard/passenger/saved-routes/actions'; // Ensure this type is correctly defined if used
 
 export const WatchRouteInputSchema = z.object({
   passengerEmail: z.string().email().describe('La dirección de correo electrónico del pasajero.'),
@@ -22,9 +21,9 @@ export const WatchRoutePromptInputSchema = z.object({
     tripFound: z.boolean().describe('Indica si se encontró un viaje coincidente.'),
     tripOrigin: z.string().optional().describe('Origen del viaje encontrado.'),
     tripDestination: z.string().optional().describe('Destino del viaje encontrado.'),
-    // Este campo YA ESTARÁ FORMATEADO como "dd de MMMM de yyyy a las HH:mm hrs (UTC)"
+    // Este campo YA ESTARÁ FORMATEADO como "dd de MMMM de yyyy a las HH:mm hrs (UTC)" desde actions.ts
     tripDepartureDateTime: z.string().optional().describe('Fecha y hora de salida del viaje encontrado, ya formateada y en UTC.'),
-    // Este campo YA ESTARÁ FORMATEADO como "dd de MMMM de yyyy"
+    // Este campo YA ESTARÁ FORMATEADO como "dd de MMMM de yyyy" desde actions.ts
     tripDepartureDateFormatted: z.string().optional().describe('Fecha de salida del viaje encontrado (formato dd de MMMM de yyyy), para el asunto del correo.'),
     tripDriverFullName: z.string().optional().describe('Nombre completo del conductor del viaje encontrado.'),
     tripSeatsAvailable: z.number().optional().describe('Asientos disponibles en el viaje encontrado.'),
