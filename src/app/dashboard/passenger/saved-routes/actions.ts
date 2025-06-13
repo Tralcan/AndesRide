@@ -157,7 +157,7 @@ export interface PublishedTripDetails {
   tripId: string;
   driverEmail: string | null;
   driverFullName: string | null;
-  departureDateTime: string; // ISO string UTC
+  departureDateTime: string; // Formatted string: "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'"
   origin: string;
   destination: string;
   seatsAvailable: number;
@@ -214,15 +214,22 @@ export async function findPublishedMatchingTripsAction(
     console.log(`[findPublishedMatchingTripsAction] Found ${tripsData.length} trips via RPC. Raw data (first 500 chars):`, JSON.stringify(tripsData, null, 2).substring(0, 500));
 
     const results: PublishedTripDetails[] = tripsData.map((trip: any) => {
-      // Mantener departureDateTime como la cadena ISO UTC de la base de datos.
-      // El LLM la recibirá así y se le instruirá cómo usarla.
-      const departureDateTimeISO = trip.departure_datetime; 
+      let formattedDepartureDateTime = trip.departure_datetime; // Default to ISO string if parsing fails
+      try {
+        const parsedDate = parseISO(trip.departure_datetime);
+        if (isValid(parsedDate)) {
+          // Formatear a una cadena legible en UTC
+          formattedDepartureDateTime = format(parsedDate, "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'", { locale: es });
+        }
+      } catch (e) {
+        console.warn(`[findPublishedMatchingTripsAction] Error parsing date ${trip.departure_datetime}, using ISO string. Error: ${e}`);
+      }
 
       return {
         tripId: trip.id, 
         driverEmail: trip.driver_email || null,
         driverFullName: trip.driver_name || 'Conductor Anónimo',
-        departureDateTime: departureDateTimeISO, // Usar la cadena ISO UTC directamente
+        departureDateTime: formattedDepartureDateTime, // Usar la cadena UTC formateada
         origin: trip.origin,
         destination: trip.destination,
         seatsAvailable: trip.seats_available,

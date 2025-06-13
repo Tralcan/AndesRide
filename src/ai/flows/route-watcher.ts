@@ -16,8 +16,6 @@ import { APP_NAME } from '@/lib/constants';
 import {
   WatchRouteInputSchema,
   type WatchRouteInput,
-  // WatchRouteLLMOutputSchema, // Se simplificará
-  // type WatchRouteLLMOutput,
   WatchRoutePromptInputSchema,
   type WatchRoutePromptInput,
   type WatchRouteOutput
@@ -91,54 +89,69 @@ async function sendNotification(
   }
 }
 
-// Schema de salida simplificado para el LLM
-const WatchRouteLLMSimpleOutputSchema = z.object({
-  routeMatchFound: z.boolean().describe('Si se encontró una ruta coincidente REAL Y PUBLICADA.'),
-  message: z.string().describe('Un mensaje que indica el resultado de la vigilancia de la ruta.'),
-  emailSubject: z.string().optional().describe('El asunto del correo electrónico a enviar, si se encontró una coincidencia. Debe ser breve, profesional, conciso, y no exceder los 70 caracteres. NO USAR emojis. Incluir origen, destino y fecha (DD/MM/YYYY).'),
+const WatchRouteLLMOutputSchema = z.object({
+  routeMatchFound: z.boolean().describe('Indica si se encontró una ruta coincidente REAL Y PUBLICADA.'),
+  message: z.string().describe('Un mensaje que resume el resultado de la vigilancia de la ruta.'),
+  emailSubject: z.string().optional().describe('Asunto del correo electrónico. Breve, profesional, conciso, max 70 caracteres. Incluir origen, destino y fecha (DD/MM/YYYY). NO USAR emojis.'),
+  emailMessage: z.string().optional().describe('Cuerpo del correo electrónico. Amigable, con detalles del viaje (conductor, hora, asientos). Si no hay viaje, este campo puede omitirse o ser un mensaje corto indicando que no se encontró viaje.')
 });
-type WatchRouteLLMSimpleOutput = z.infer<typeof WatchRouteLLMSimpleOutputSchema>;
-
+export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
-  output: {schema: WatchRouteLLMSimpleOutputSchema }, // Usar el schema simplificado
-  prompt: `Eres un vigilante de rutas para ${APP_NAME}. Tu tarea es analizar si hay viajes coincidentes y generar SOLAMENTE el asunto del email.
+  output: {schema: WatchRouteLLMOutputSchema },
+  prompt: `Eres un vigilante de rutas para ${APP_NAME}.
+Tu tarea es analizar si hay viajes publicados que coincidan con la ruta guardada del pasajero y generar el contenido para una notificación por correo electrónico.
 RESPONDE ÚNICAMENTE EN FORMATO JSON. Tu respuesta DEBE seguir el schema Zod: {{outputSchema}}.
 NO REPITAS TEXTO. NO USES emojis. Entrega solo el JSON.
 
-Datos del pasajero:
+Datos de la ruta guardada del pasajero:
 - Email: {{{passengerEmail}}}
 - Origen: {{{origin}}}
 - Destino: {{{destination}}}
-- Fecha deseada: {{{date}}} (formato YYYY-MM-DD)
+- Fecha deseada (YYYY-MM-DD): {{{date}}} (esta es la fecha para la cual se busca el viaje)
 
-Viajes publicados coincidentes (JSON string, usa el PRIMER viaje si hay varios. Si está vacío o es "[]", no hay coincidencias):
+Viajes publicados coincidentes (JSON string, toma el PRIMER viaje si hay varios. Si está vacío o es "[]", no hay coincidencias):
 {{{matchingTripsJson}}}
 
 Instrucciones para el JSON de salida:
 
 1.  'routeMatchFound' (boolean):
-    -   \`true\` si 'matchingTripsJson' NO está vacío y NO es "[]".
+    -   \`true\` si 'matchingTripsJson' NO está vacío, NO es "[]" y contiene al menos un viaje.
     -   \`false\` si 'matchingTripsJson' está vacío o es "[]".
 
 2.  'message' (string):
-    -   Si 'routeMatchFound' es \`true\`: "Coincidencia encontrada para tu ruta {{{origin}}} - {{{destination}}}."
+    -   Si 'routeMatchFound' es \`true\`: "¡Coincidencia encontrada para tu ruta {{{origin}}} - {{{destination}}} el {{{date}}}!"
     -   Si 'routeMatchFound' es \`false\`: "No se encontraron viajes para tu ruta {{{origin}}} - {{{destination}}} en la fecha {{{date}}}."
 
 3.  'emailSubject' (string, OBLIGATORIO si 'routeMatchFound' es \`true\`):
-    -   Debe ser MUY CORTO y profesional. Ejemplo: "¡Viaje Encontrado! {{{origin}}} a {{{destination}}} ({{{date}}})".
-    -   La fecha en el asunto debe ser en formato DD/MM/YYYY.
+    -   Debe ser MUY CORTO y profesional.
+    -   Formato: "¡Viaje Encontrado! {{{origin}}} a {{{destination}}} (DD/MM/YYYY)"
+    -   La fecha en el asunto DEBE ser la fecha {{{date}}} del input, formateada como DD/MM/YYYY.
     -   No exceder los 70 caracteres.
-    -   NO incluyas detalles del viaje ni llamados a la acción aquí, solo el asunto.
+
+4.  'emailMessage' (string, OBLIGATORIO si 'routeMatchFound' es \`true\`):
+    -   Si 'routeMatchFound' es \`true\`, construye un mensaje amigable.
+        -   Saludo: "Hola,"
+        -   Cuerpo: "Hemos encontrado un viaje que coincide con tu ruta guardada de {{{origin}}} a {{{destination}}} para el {{#jsonPath matchingTripsJson "$[0].departureDateTime"}}{{formatDate this "dd 'de' MMMM 'de' yyyy" "es"}}{{/jsonPath}}." (Usa el departureDateTime del primer viaje para la fecha en el mensaje).
+        -   Detalles del viaje (del primer viaje en 'matchingTripsJson'):
+            -   Origen: {{{matchingTripsJson.[0].origin}}}
+            -   Destino: {{{matchingTripsJson.[0].destination}}}
+            -   Fecha y Hora Programada: {{#jsonPath matchingTripsJson "$[0].departureDateTime"}}{{formatDate this "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'" "es"}}{{/jsonPath}}.
+            -   Conductor: {{matchingTripsJson.[0].driverFullName}}
+            -   Asientos Disponibles: {{matchingTripsJson.[0].seatsAvailable}}
+        -   Llamada a la acción: "Puedes ver más detalles y solicitar tu asiento en ${APP_NAME}."
+        -   Despedida: "Saludos,\nEl equipo de ${APP_NAME}"
+    -   Si 'routeMatchFound' es \`false\`, este campo puede ser una cadena vacía o un mensaje simple como "No hay viajes disponibles por ahora."
 
 Ejemplo de JSON esperado si hay coincidencia:
 \`\`\`json
 {
   "routeMatchFound": true,
-  "message": "Coincidencia encontrada para tu ruta Ejemplo Origen - Ejemplo Destino.",
-  "emailSubject": "¡Viaje Encontrado! Ejemplo Origen a Ejemplo Destino (DD/MM/YYYY)"
+  "message": "¡Coincidencia encontrada para tu ruta Ejemplo Origen - Ejemplo Destino el AAAA-MM-DD!",
+  "emailSubject": "¡Viaje Encontrado! Ejemplo Origen a Ejemplo Destino (DD/MM/YYYY)",
+  "emailMessage": "Hola,\\n\\nHemos encontrado un viaje que coincide con tu ruta guardada de Ejemplo Origen a Ejemplo Destino para el 30 de junio de 2025.\\n\\nDetalles del viaje encontrado:\\n- Origen: Ejemplo Origen\\n- Destino: Ejemplo Destino\\n- Fecha y Hora Programada: 30 de junio de 2025 a las 10:00 hrs (UTC-4 / Hora de Santiago).\\n- Conductor: Nombre del Conductor\\n- Asientos Disponibles: 2\\n\\nPuedes ver más detalles y solicitar tu asiento en ${APP_NAME}.\\n\\nSaludos,\\nEl equipo de ${APP_NAME}"
 }
 \`\`\`
 
@@ -146,12 +159,14 @@ Ejemplo de JSON esperado si NO hay coincidencia:
 \`\`\`json
 {
   "routeMatchFound": false,
-  "message": "No se encontraron viajes para tu ruta Ejemplo Origen - Ejemplo Destino en la fecha Ejemplo Fecha."
+  "message": "No se encontraron viajes para tu ruta Ejemplo Origen - Ejemplo Destino en la fecha AAAA-MM-DD.",
+  "emailSubject": "",
+  "emailMessage": "No hay viajes disponibles por ahora."
 }
 \`\`\`
 `,
   config: {
-    temperature: 0.2,
+    temperature: 0.2, // Reducir la creatividad para respuestas más consistentes
     safetySettings: [
       { category: 'HARM_CATEGORY_HATE_SPEECH', threshold: 'BLOCK_ONLY_HIGH' },
       { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
@@ -165,9 +180,9 @@ const watchRouteFlow = ai.defineFlow(
   {
     name: 'watchRouteFlowInternal',
     inputSchema: WatchRouteInputSchema,
-    outputSchema: WatchRouteLLMSimpleOutputSchema, // Usar el schema simplificado
+    outputSchema: WatchRouteLLMOutputSchema,
   },
-  async (input: WatchRouteInput): Promise<WatchRouteLLMSimpleOutput> => {
+  async (input: WatchRouteInput): Promise<WatchRouteLLMOutput> => {
     console.log('[watchRouteFlow] Flow iniciado con input:', JSON.stringify(input, null, 2));
 
     const searchInput: FindPublishedMatchingTripsInput = {
@@ -185,6 +200,11 @@ const watchRouteFlow = ai.defineFlow(
         }
     } catch (error: any) {
         console.error('[watchRouteFlow] Error al llamar a findPublishedMatchingTripsAction:', error.message ? error.message : JSON.stringify(error));
+         // No devolver un error aquí, sino un objeto de salida que indique el fallo
+        return {
+            routeMatchFound: false,
+            message: `Error al buscar viajes: ${error.message || 'Error desconocido'}`
+        };
     }
     
     const matchingTripsJson = JSON.stringify(matchingTrips);
@@ -197,11 +217,11 @@ const watchRouteFlow = ai.defineFlow(
 
     console.log('[watchRouteFlow] Input para el prompt del LLM (incluyendo matchingTripsJson):', JSON.stringify(promptInput, null, 2));
     
-    let llmOutput: WatchRouteLLMSimpleOutput | null = null;
+    let llmOutput: WatchRouteLLMOutput | null = null;
     try {
       const { output } = await prompt(promptInput);
       llmOutput = output;
-      console.log('[watchRouteFlow] Output del LLM (WatchRouteLLMSimpleOutputSchema):', JSON.stringify(llmOutput, null, 2));
+      console.log('[watchRouteFlow] Output del LLM (WatchRouteLLMOutputSchema):', JSON.stringify(llmOutput, null, 2));
     } catch (error: any) {
       console.error('[watchRouteFlow] Error DURANTE LA LLAMADA al prompt del LLM:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
       return {
@@ -225,74 +245,42 @@ const watchRouteFlow = ai.defineFlow(
 export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutput> {
   console.log('[watchRoute] Invoking watchRouteFlow with input:', JSON.stringify(input, null, 2));
   const llmResult = await watchRouteFlow(input); 
-  console.log('[watchRoute] LLM Result (simple):', JSON.stringify(llmResult, null, 2));
+  console.log('[watchRoute] LLM Result:', JSON.stringify(llmResult, null, 2));
 
   let notificationSent = false;
-  let emailMessage = ""; // Inicializar emailMessage
+  
+  const passengerDateFormatted = format(parseISO(input.date), "dd 'de' MMMM 'de' yyyy", { locale: es });
 
-  if (llmResult.routeMatchFound && llmResult.emailSubject && llmResult.emailSubject.trim() !== '') {
-    // Buscar los detalles del viaje para construir el cuerpo del email
-    const searchInput: FindPublishedMatchingTripsInput = {
-        origin: input.origin,
-        destination: input.destination,
-        searchDate: input.date,
-    };
-    let matchingTrips: PublishedTripDetails[] = [];
-    try {
-        matchingTrips = await findPublishedMatchingTripsAction(searchInput);
-    } catch (error) {
-        console.error('[watchRoute] Error obteniendo detalles del viaje para el email:', error);
-    }
-
-    if (matchingTrips.length > 0) {
-        const trip = matchingTrips[0];
-        let formattedDepartureTime = "Hora no especificada";
-        try {
-            // Formatear la fecha y hora para el correo
-            const departureDate = parseISO(trip.departureDateTime); // trip.departureDateTime es '2025-06-30T14:00:00+00:00'
-            // Formateamos a la hora local del servidor, que por defecto en Vercel es UTC.
-            // Para un formato amigable, especificamos el idioma.
-            // Si se quisiera una zona horaria específica, se necesitaría date-fns-tz o similar.
-            formattedDepartureTime = format(departureDate, "dd 'de' MMMM 'de' yyyy 'a las' HH:mm 'hrs (UTC)'", { locale: es });
-        } catch (e) {
-            console.error("[watchRoute] Error al formatear la fecha para el email:", e);
-            // Usar la cadena ISO directamente si el formateo falla
-            formattedDepartureTime = `${trip.departureDateTime} (UTC)`;
-        }
-        
-        emailMessage = `Hola,\n\nHemos encontrado un viaje para tu ruta de ${trip.origin} a ${trip.destination} para la fecha ${format(parseISO(input.date), "dd 'de' MMMM 'de' yyyy", { locale: es })}.\n\nDetalles del viaje encontrado:\n- Origen: ${trip.origin}\n- Destino: ${trip.destination}\n- Fecha y Hora Programada: ${formattedDepartureTime}\n- Conductor: ${trip.driverFullName || 'No especificado'}\n- Asientos Disponibles: ${trip.seatsAvailable}\n\nRevisa y reserva en ${APP_NAME}.\n\nSaludos,\nEl equipo de ${APP_NAME}`;
-        console.log(`[watchRoute] Email message construido: ${emailMessage.substring(0, 100)}...`);
-    } else {
-        console.warn("[watchRoute] Coincidencia de ruta encontrada, pero no se pudieron recuperar los detalles del viaje para el email.");
-        llmResult.message = "Coincidencia de ruta encontrada, pero hubo un error al generar los detalles para la notificación.";
-    }
-  }
-
-  const hasValidSubject = llmResult.emailSubject && llmResult.emailSubject.trim() !== '';
-  const hasValidMessage = emailMessage.trim() !== '';
+  // Validar que emailSubject y emailMessage existan y sean strings no vacíos
+  const hasValidSubject = typeof llmResult.emailSubject === 'string' && llmResult.emailSubject.trim() !== '';
+  const hasValidMessage = typeof llmResult.emailMessage === 'string' && llmResult.emailMessage.trim() !== '';
 
   if (llmResult.routeMatchFound && hasValidSubject && hasValidMessage) {
-    let cleanedSubject = llmResult.emailSubject!.trim().replace(/\s+/g, ' '); 
-
+    let cleanedSubject = llmResult.emailSubject!.trim().replace(/\s+/g, ' ');
+    
+    // Truncar si el asunto es demasiado largo
     if (cleanedSubject.length > 70) {
         cleanedSubject = cleanedSubject.substring(0, 67) + "...";
-    }
-     if (cleanedSubject.length === 0 && (llmResult.emailSubject || '').trim().length > 0) { 
-        // Este fallback podría necesitar ajuste si el subject es basura como antes
-        cleanedSubject = `Viaje Encontrado: ${input.origin} - ${input.destination}`;
+        console.warn(`[watchRoute] emailSubject truncado a: "${cleanedSubject}"`);
     }
     
-    console.log(`[watchRoute] LLM generó asunto. Asunto (limpio): "${cleanedSubject}"`);
+    // Fallback por si el LLM devuelve un subject vacío pero debería haber uno
+    if (cleanedSubject.length === 0 && llmResult.emailSubject !== undefined) { 
+        cleanedSubject = `¡Viaje Encontrado! ${input.origin} a ${input.destination} (${format(parseISO(input.date), "dd/MM/yyyy", { locale: es })})`;
+        console.warn(`[watchRoute] emailSubject estaba vacío, usando fallback: "${cleanedSubject}"`);
+    }
+    
+    console.log(`[watchRoute] LLM generó asunto y mensaje. Asunto (limpio): "${cleanedSubject}"`);
     notificationSent = await sendNotification(
       input.passengerEmail,
       cleanedSubject,
-      emailMessage
+      llmResult.emailMessage! // Sabemos que es un string no vacío por hasValidMessage
     );
     console.log(`[watchRoute] Resultado de sendNotification: ${notificationSent}`);
   } else if (llmResult.routeMatchFound) {
-    console.warn("[watchRoute] Coincidencia de ruta encontrada, pero no se generó un asunto y/o mensaje de correo válido. No se enviará notificación.");
-    if (!hasValidSubject) console.warn("[watchRoute] Causa: emailSubject falta, no es string o es vacío.");
-    if (!hasValidMessage) console.warn("[watchRoute] Causa: emailMessage (construido) es vacío.");
+    console.warn("[watchRoute] Coincidencia de ruta encontrada, pero el LLM no generó emailSubject y/o emailMessage válidos. No se enviará notificación.");
+    if (!hasValidSubject) console.warn("[watchRoute] Causa: emailSubject falta, no es string o es vacío. Valor recibido:", llmResult.emailSubject);
+    if (!hasValidMessage) console.warn("[watchRoute] Causa: emailMessage falta, no es string o es vacío. Valor recibido:", llmResult.emailMessage);
   } else {
     console.log("[watchRoute] No se encontró coincidencia de ruta según el LLM (o hubo un error en el LLM). No se enviará correo.");
   }
@@ -302,7 +290,7 @@ export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutp
     notificationSent: notificationSent,
     message: llmResult.message || "Mensaje no proporcionado por el LLM.",
     emailContent: (llmResult.routeMatchFound && hasValidSubject && hasValidMessage)
-      ? { subject: llmResult.emailSubject!, body: emailMessage }
+      ? { subject: llmResult.emailSubject!, body: llmResult.emailMessage! }
       : undefined
   };
 }
