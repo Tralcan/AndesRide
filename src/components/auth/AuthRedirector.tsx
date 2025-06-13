@@ -1,79 +1,73 @@
+
 // src/components/auth/AuthRedirector.tsx
 "use client";
 
 import { useAuth } from "@/hooks/useAuth";
-import { useRouter, usePathname } from "next/navigation"; 
-import { useEffect } from "react";
+import { useRouter, usePathname } from "next/navigation";
+import { useEffect, useRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export function AuthRedirector({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, role, isLoading, user } = useAuth(); 
+  const { isAuthenticated, role, isLoading, user } = useAuth();
   const router = useRouter();
-  const pathname = usePathname(); 
+  const pathname = usePathname();
 
-  console.log(`[AuthRedirector] Rendering. Current state: isLoading=${isLoading}, isAuthenticated=${isAuthenticated}, role=${role}, userId=${user?.id}, pathname=${pathname}`);
+  // Refs para logging del estado actual dentro de useEffect
+  const isLoadingRef = useRef(isLoading);
+  const isAuthenticatedRef = useRef(isAuthenticated);
+  const roleRef = useRef(role);
 
   useEffect(() => {
-    console.log(`[AuthRedirector][useEffect] Triggered. State: isLoading=${isLoading}, isAuthenticated=${isAuthenticated}, role=${role}, pathname=${pathname}`);
-    
-    if (isLoading) {
-      console.log('[AuthRedirector][useEffect] Still loading auth state, no redirection decision yet.');
-      return; 
+    isLoadingRef.current = isLoading;
+    isAuthenticatedRef.current = isAuthenticated;
+    roleRef.current = role;
+  });
+
+  useEffect(() => {
+    console.log(
+      `[AuthRedirector][useEffect] Triggered. Pathname: ${pathname}. isLoading: ${isLoadingRef.current}, isAuthenticated: ${isAuthenticatedRef.current}, role: ${roleRef.current}, User ID: ${user?.id}`
+    );
+
+    if (isLoadingRef.current) {
+      console.log('[AuthRedirector][useEffect] STILL LOADING auth state. No redirection decision yet.');
+      return; // Espera a que el estado de autenticación se resuelva
     }
 
-    // At this point, isLoading is false.
-    console.log(`[AuthRedirector][useEffect] Auth state loaded. isAuthenticated=${isAuthenticated}, role=${role}`);
+    // En este punto, isLoadingRef.current es false. El estado de autenticación se ha cargado.
+    console.log(`[AuthRedirector][useEffect] Auth state LOADED. isAuthenticated: ${isAuthenticatedRef.current}, role: ${roleRef.current}, User ID: ${user?.id}`);
 
-    if (isAuthenticated) {
-      if (role) {
-        // User authenticated and has a role
-        if (pathname === "/" || pathname === "/role-selection") { 
-          console.log(`[AuthRedirector][useEffect] User authenticated with role, currently on '${pathname}'. Redirecting to /dashboard.`);
+    if (isAuthenticatedRef.current) {
+      if (roleRef.current) {
+        // Usuario autenticado y con rol
+        if (pathname === "/" || pathname === "/role-selection") {
+          console.log(`[AuthRedirector][useEffect] User authenticated with role, on '${pathname}'. Redirecting to /dashboard.`);
           router.replace("/dashboard");
         } else {
-          console.log(`[AuthRedirector][useEffect] User authenticated with role, currently on '${pathname}'. No redirection needed.`);
+          console.log(`[AuthRedirector][useEffect] User authenticated with role, on '${pathname}'. No redirection needed.`);
         }
       } else {
-        // User authenticated WITHOUT a role
-        if (pathname !== "/role-selection") { 
-          console.log(`[AuthRedirector][useEffect] User authenticated without role, currently on '${pathname}'. Redirecting to /role-selection.`);
+        // Usuario autenticado SIN rol
+        if (pathname !== "/role-selection") {
+          console.log(`[AuthRedirector][useEffect] User authenticated WITHOUT role, on '${pathname}'. Redirecting to /role-selection.`);
           router.replace("/role-selection");
         } else {
-          console.log(`[AuthRedirector][useEffect] User authenticated without role, already on /role-selection. No redirection needed.`);
+          console.log(`[AuthRedirector][useEffect] User authenticated WITHOUT role, already on /role-selection. No redirection needed.`);
         }
       }
     } else {
-      // User NOT authenticated
-      if (pathname !== "/") { 
-        console.log(`[AuthRedirector][useEffect] User not authenticated, currently on '${pathname}'. Redirecting to /.`);
+      // Usuario NO autenticado
+      if (pathname !== "/") {
+        console.log(`[AuthRedirector][useEffect] User NOT authenticated, on '${pathname}'. Redirecting to /.`);
         router.replace("/");
       } else {
-        console.log(`[AuthRedirector][useEffect] User not authenticated, already on /. No redirection needed.`);
+        console.log(`[AuthRedirector][useEffect] User NOT authenticated, already on /. No redirection needed.`);
       }
     }
-  }, [isAuthenticated, role, isLoading, router, pathname]);
+  }, [isAuthenticated, role, isLoading, router, pathname, user?.id]); // Dependencias originales
 
-  // Determine if skeleton should be shown
-  // Show skeleton if:
-  // 1. Auth state is still loading OR
-  // 2. Auth state is loaded, but a redirect is imminent based on current conditions
-  let needsRedirect = false;
-  if (!isLoading) { // Only evaluate redirect need if auth state is resolved
-    if (isAuthenticated) {
-      if (role) {
-        if (pathname === "/" || pathname === "/role-selection") needsRedirect = true;
-      } else {
-        if (pathname !== "/role-selection") needsRedirect = true;
-      }
-    } else {
-      if (pathname !== "/") needsRedirect = true;
-    }
-  }
-
-  const showSkeleton = isLoading || needsRedirect;
-
-  if (showSkeleton) {
-    console.log(`[AuthRedirector] Showing skeleton. isLoading=${isLoading}, needsRedirect=${needsRedirect} (based on isAuthenticated=${isAuthenticated}, role=${role}, pathname=${pathname})`);
+  // Mostrar el esqueleto SÓLO si AuthContext todavía está cargando su estado.
+  if (isLoading) {
+    console.log(`[AuthRedirector] Rendering SKELETON because isLoading from AuthContext is true. Pathname: ${pathname}`);
     return (
       <div className="flex flex-col items-center justify-center min-h-screen bg-background p-4">
         <Skeleton className="h-12 w-12 rounded-full mb-4" />
@@ -83,7 +77,12 @@ export function AuthRedirector({ children }: { children: React.ReactNode }) {
       </div>
     );
   }
-  
-  console.log(`[AuthRedirector] Not showing skeleton (isLoading=${isLoading}, needsRedirect=${needsRedirect}), rendering children for pathname: ${pathname}`);
+
+  // Si no está cargando (isLoading es false), el useEffect anterior ya habrá manejado
+  // cualquier redirección necesaria. En este punto, simplemente renderizamos los hijos.
+  // Esto significa que si estamos en "/" y necesitamos ir a "/role-selection",
+  // el redirector habrá disparado router.replace, y la página de /role-selection
+  // se renderizará (que a su vez también puede usar AuthRedirector, pero el flujo debería ser correcto).
+  console.log(`[AuthRedirector] NOT rendering SKELETON (isLoading is false). Pathname: ${pathname}. Rendering children.`);
   return <>{children}</>;
 }
