@@ -35,7 +35,7 @@ interface AuthContextType {
 
 export const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-export function AuthProvider({ children }: { children: React.ReactNode }) { // Corrected React.Node to React.ReactNode
+export function AuthProvider({ children }: { children: React.ReactNode }) {
   const supabase = useMemo(() => createClientComponentClient(), []);
   const [user, setUser] = useState<User | null>(null);
   const [session, setSession] = useState<Session | null>(null);
@@ -82,7 +82,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
   useEffect(() => {
     let isMounted = true;
     console.log("[AuthContext][useEffect] Mounting. Setting up onAuthStateChange listener.");
-    setIsLoading(true); // Ensure loading is true at the start of effect
+    setIsLoading(true);
 
     const { data: authListener } = supabase.auth.onAuthStateChange(
       async (event, currentSession) => {
@@ -90,37 +90,49 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
           console.log("[AuthContext][onAuthStateChange] Component unmounted, ignoring auth event:", event);
           return;
         }
-        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}. Current loading state: ${isLoading}`);
+        console.log(`[AuthContext][onAuthStateChange] Event: ${event}. Session available: ${!!currentSession}. Current loading state (before processing): ${isLoading}`);
         
-        setSession(currentSession);
+        setSession(currentSession); // Set session first
 
-        if (currentSession?.user) {
-          console.log('[AuthContext][onAuthStateChange] User session exists. Fetching profile...');
-          setUser(prevUser => ({ ...currentSession.user, profile: prevUser?.profile || null }));
-          
-          const profile = await fetchUserProfile(currentSession.user);
-          
-          if (!isMounted) { 
-            console.log("[AuthContext][onAuthStateChange] Unmounted during/after profile fetch for event:", event);
-            return; 
-          }
-          
-          if (profile) {
-            setUser(prevUser => prevUser ? ({ ...prevUser, profile }) : ({...currentSession.user, profile }));
-            setRoleState(profile.role || null);
-            console.log('[AuthContext][onAuthStateChange] User profile and role updated. Role:', profile.role);
+        try {
+          if (currentSession?.user) {
+            console.log('[AuthContext][onAuthStateChange] User session exists. Setting basic user, then fetching profile...');
+            // Set basic user info immediately from session
+            setUser(prevUser => ({ ...currentSession.user, profile: prevUser?.profile || null }));
+            
+            const profile = await fetchUserProfile(currentSession.user);
+            
+            if (!isMounted) { 
+              console.log("[AuthContext][onAuthStateChange] Unmounted during/after profile fetch for event:", event);
+              return; 
+            }
+            
+            if (profile) {
+              setUser(prevUser => prevUser ? ({ ...prevUser, profile }) : ({...currentSession.user, profile }));
+              setRoleState(profile.role || null);
+              console.log('[AuthContext][onAuthStateChange] User profile and role updated. Role:', profile.role);
+            } else {
+              // User has a session but no profile or profile fetch failed.
+              // Keep the basic user info, but ensure role is null.
+              setUser(prevUser => prevUser ? ({ ...prevUser, profile: null }) : ({...currentSession.user, profile: null }));
+              setRoleState(null); 
+              console.warn('[AuthContext][onAuthStateChange] No profile found or error during fetch. Role set to null.');
+            }
           } else {
-            setRoleState(null); 
-            console.warn('[AuthContext][onAuthStateChange] No profile found or error during fetch. Role set to null.');
+            console.log('[AuthContext][onAuthStateChange] No user in session. Clearing user and role.');
+            setUser(null);
+            setRoleState(null);
           }
-        } else {
-          console.log('[AuthContext][onAuthStateChange] No user in session. Clearing user and role.');
-          setUser(null);
-          setRoleState(null);
-        }
-        if (isMounted) {
-          setIsLoading(false);
-          console.log('[AuthContext][onAuthStateChange] Auth state processed, isLoading set to false.');
+        } catch (error) {
+            console.error('[AuthContext][onAuthStateChange] Exception during auth state processing:', error);
+            // Ensure state is reset in case of an unexpected error
+            setUser(null);
+            setRoleState(null);
+        } finally {
+            if (isMounted) {
+              setIsLoading(false);
+              console.log('[AuthContext][onAuthStateChange] Auth state processed, isLoading set to false.');
+            }
         }
       }
     );
@@ -130,10 +142,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
       if (!isMounted) return;
       console.log("[AuthContext][useEffect] Initial getSession complete. Session exists:", !!initialSession);
       if (!initialSession) {
-        setIsLoading(false);
+        setIsLoading(false); // If no session, we are done loading for now.
         console.log("[AuthContext][useEffect] No initial session found, isLoading set to false.");
       }
-      // If there is a session, onAuthStateChange will handle setting user, role, and isLoading
+      // If there is an initial session, onAuthStateChange will be triggered and handle setting user, role, and eventually isLoading to false.
     });
 
     return () => {
@@ -146,7 +158,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
 
   const login = async () => {
     console.log("[AuthContext] Attempting login with Google.");
-    setIsLoading(true); // Set loading true before initiating OAuth
+    setIsLoading(true);
     const redirectURL = window.location.origin + "/auth/callback";
     const { error } = await supabase.auth.signInWithOAuth({
       provider: "google",
@@ -161,9 +173,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
         description: error.message || "No se pudo iniciar sesión con Google. Inténtalo de nuevo.",
         variant: "destructive",
       });
-      setIsLoading(false); // Reset loading state on error
+      setIsLoading(false); 
     }
-    // setIsLoading(false) will be handled by onAuthStateChange after successful redirect
     return { error };
   };
 
@@ -183,7 +194,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
       setUser(null);
       setRoleState(null);
       setSession(null);
-      setIsLoading(false); // Ensure isLoading is false after state updates
+      // setIsLoading(false); // onAuthStateChange will set isLoading to false
       console.log("[AuthContext] Logout successful, redirecting to /");
       router.push('/'); 
     }
@@ -198,7 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
       return;
     }
 
-    setIsLoading(true); // Indicate loading state
+    setIsLoading(true); 
     const toastControl = showToast({
       title: "Actualizando Rol",
       description: `Estableciendo rol a ${newRole}... Por favor, espera.`,
@@ -244,7 +255,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
           variant: "destructive",
           duration: 9000,
         });
-        setIsLoading(false);
         return; 
       }
       
@@ -256,7 +266,6 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
           description: "El rol se guardó, pero no se pudo confirmar la actualización. Intenta recargar la página.",
           variant: "destructive",
         });
-        setIsLoading(false);
         return;
       }
 
@@ -304,7 +313,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
       value={{
         user,
         role,
-        isAuthenticated: !!user && !!session,
+        isAuthenticated: !!user && !!session, // isAuthenticated depends on both user and session
         isLoading,
         login,
         logout,
@@ -318,5 +327,3 @@ export function AuthProvider({ children }: { children: React.ReactNode }) { // C
     </AuthContext.Provider>
   );
 }
-// Asegúrate de que no haya más código después de este cierre de llave.
-// El código de AuthRedirector.tsx no debe estar aquí.
