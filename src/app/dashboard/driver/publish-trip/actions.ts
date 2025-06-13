@@ -1,10 +1,11 @@
+
 // src/app/dashboard/driver/publish-trip/actions.ts
 'use server';
 
 import { createServerActionClient } from '@/lib/supabase/server';
-import { generatePromotionalImageForBrand, type GeneratePromotionalImageInput } from '@/ai/flows/generate-promo-image-flow';
-import { watchRoute } from '@/ai/flows/route-watcher'; // Importar la función principal
-import type { WatchRouteInput, WatchRouteOutput } from '@/ai/flows/route-watcher-types'; // Importar tipos del nuevo archivo
+import { type GeneratePromotionalImageInput } from '@/ai/flows/generate-promo-image-flow';
+import { watchRoute } from '@/ai/flows/route-watcher'; 
+import type { WatchRouteInput, WatchRouteOutput } from '@/ai/flows/route-watcher-types';
 import { revalidatePath } from 'next/cache';
 import { format, parseISO } from 'date-fns';
 
@@ -28,10 +29,8 @@ interface BasicSavedRouteForNotification {
 export async function processNewTripAndNotifyPassengersAction(
   tripData: NewTripData
 ): Promise<{ success: boolean; message: string; tripId?: string; notificationResults?: any[] }> {
-  console.log('[PublishTripActions] Action initiated. TripData:', JSON.stringify(tripData, null, 2));
-
-  const supabase = createServerActionClient();
-  console.log('[PublishTripActions] Supabase client created for server action.');
+  const supabase = createServerActionClient(); 
+  console.log('[PublishTripActions] processNewTripAndNotifyPassengersAction called with tripData:', JSON.stringify(tripData, null, 2));
 
   const { data: { user: driverUser }, error: driverAuthError } = await supabase.auth.getUser();
 
@@ -158,43 +157,75 @@ export async function processNewTripAndNotifyPassengersAction(
             return { email: passengerEmail, saved_route_id: sr.id, success: output.notificationSent, ...output };
           })
           .catch(error => {
-            console.error(`[PublishTripActions] watchRoute FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, error.message ? error.message : JSON.stringify(error, null, 2));
-            return { email: passengerEmail, saved_route_id: sr.id, success: false, error: error.message || 'Unknown error from watchRoute', routeMatchFound: false, notificationSent: false, message: `Error al procesar la ruta para ${passengerEmail}: ${error.message}` };
+            const errorMessage = error.message || 'Unknown error from watchRoute';
+            console.error(`[PublishTripActions] watchRoute FAILED for ${passengerEmail} (Route ID: ${sr.id}):`, errorMessage);
+            
+            let displayMessage = `Error al procesar la ruta para ${passengerEmail}: ${errorMessage}`;
+            if (errorMessage.includes("GoogleGenerativeAI Error") || errorMessage.includes("Service Unavailable") || errorMessage.includes("model is overloaded")) {
+                displayMessage = `El servicio de IA para notificaciones no está disponible temporalmente para ${passengerEmail}. Intenta más tarde.`;
+            }
+
+            return { 
+                email: passengerEmail, 
+                saved_route_id: sr.id, 
+                success: false, 
+                error: errorMessage, 
+                routeMatchFound: false, 
+                notificationSent: false, 
+                message: displayMessage
+            };
           })
       );
     }
 
-    const notificationResults = await Promise.allSettled(notificationPromises);
-    console.log('[PublishTripActions] All notification promises settled. Results:', JSON.stringify(notificationResults, null, 2));
+    const notificationResultsSettled = await Promise.allSettled(notificationPromises);
+    console.log('[PublishTripActions] All notification promises settled. Results:', JSON.stringify(notificationResultsSettled, null, 2));
     
-    const fulfilledResults = notificationResults
-      .filter(result => result.status === 'fulfilled')
-      .map(result => (result as PromiseFulfilledResult<any>).value);
+    const fulfilledResults = notificationResultsSettled
+        .filter(result => result.status === 'fulfilled')
+        .map(result => (result as PromiseFulfilledResult<any>).value);
 
-    const successfulNotifications = fulfilledResults.filter(r => r.notificationSent).length;
+    const successfulNotifications = fulfilledResults.filter(r => r.success).length; // Check 'success' which is set based on notificationSent
     const totalAttempted = finalMatchingSavedRoutes.length;
+    
+    let overallMessage = `Viaje publicado con ID: ${newTrip.id}. `;
+    if (totalAttempted > 0) {
+        if (successfulNotifications === totalAttempted) {
+            overallMessage += `Se notificó exitosamente a ${successfulNotifications} pasajero(s).`;
+        } else if (successfulNotifications > 0) {
+            overallMessage += `Se notificó a ${successfulNotifications} de ${totalAttempted} pasajero(s). Algunos tuvieron problemas.`;
+        } else {
+            const firstError = fulfilledResults.find(r => r.error)?.message || "No se pudieron enviar notificaciones.";
+            if (firstError.includes("El servicio de IA para notificaciones no está disponible temporalmente")) {
+                 overallMessage += `El servicio de IA para notificaciones no está disponible temporalmente. No se enviaron notificaciones.`;
+            } else {
+                 overallMessage += `No se pudieron enviar notificaciones a los pasajeros. Revisa los logs.`;
+            }
+        }
+    } else {
+        overallMessage += "No se encontraron pasajeros para notificar.";
+    }
+
 
     return {
       success: true,
       tripId: newTrip.id,
-      message: `Viaje publicado con ID: ${newTrip.id}. Se intentó notificar a ${totalAttempted} pasajero(s) (${successfulNotifications} notificaciones enviadas correctamente).`,
+      message: overallMessage,
       notificationResults: fulfilledResults,
     };
 
   } catch (error: any) {
     console.error('[PublishTripActions] Catch-all error during notification processing:', JSON.stringify(error, Object.getOwnPropertyNames(error), 2));
+    let message = `Viaje publicado con ID: ${newTrip.id}. `;
+    if (error.message && (error.message.includes("GoogleGenerativeAI Error") || error.message.includes("Service Unavailable") || error.message.includes("model is overloaded"))) {
+        message += `El servicio de IA para notificaciones no está disponible temporalmente. No se pudieron enviar las notificaciones.`;
+    } else {
+        message += `Ocurrió un error inesperado durante el proceso de notificación: ${error.message}. Por favor, revisa los logs del servidor.`;
+    }
     return {
-      success: true, // El viaje se publicó, pero la notificación falló.
+      success: true, 
       tripId: newTrip.id,
-      message: `Viaje publicado con ID: ${newTrip.id}. Ocurrió un error inesperado durante el proceso de notificación: ${error.message}. Por favor, revisa los logs del servidor.`,
+      message: message,
     };
   }
-}
-
-interface NewTripData {
-  driver_id: string;
-  origin: string;
-  destination: string;
-  departure_datetime: string; // ISO string
-  seats_available: number;
 }
