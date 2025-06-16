@@ -12,13 +12,14 @@ interface BrandFromSupabase {
   texto_promocion: string | null;
   prompt_ia: string | null;
   porcentaje_aparicion: number;
+  url_enlace_promocional: string | null; // Added field for the brand's action URL
 }
 
 async function getActiveBrands(): Promise<BrandFromSupabase[]> {
   const supabase = createServerActionClient();
   const { data, error } = await supabase
     .from('marcas')
-    .select('id, nombre, imagen_logo_url, texto_promocion, prompt_ia, porcentaje_aparicion')
+    .select('id, nombre, imagen_logo_url, texto_promocion, prompt_ia, porcentaje_aparicion, url_enlace_promocional') // Added url_enlace_promocional
     .eq('estado', true);
   if (error) {
     console.error("Error fetching active brands:", error);
@@ -53,6 +54,7 @@ export interface PromoDisplayData {
   generatedImageUri: string;
   brandName: string;
   brandLogoUrl: string | null;
+  brandActionUrl: string | null; // Added field for the clickable URL
   hasError?: boolean;
 }
 
@@ -61,6 +63,7 @@ const FALLBACK_PROMO_DATA: PromoDisplayData = {
   generatedImageUri: 'https://placehold.co/1200x400.png?text=AndesRide',
   brandName: 'AndesRide',
   brandLogoUrl: null,
+  brandActionUrl: null, // Added fallback value
   hasError: true,
 };
 
@@ -92,10 +95,12 @@ export async function getDashboardPromoData(): Promise<PromoDisplayData> {
       generatedImageUri: imageResult.imageDataUri,
       brandName: selectedBrand.nombre,
       brandLogoUrl: selectedBrand.imagen_logo_url,
+      brandActionUrl: selectedBrand.url_enlace_promocional, // Pass the URL
     };
 
   } catch (error) {
     console.error("Error in getDashboardPromoData:", error);
-    return { ...FALLBACK_PROMO_DATA, hasError: true }; 
+    return { ...FALLBACK_PROMO_DATA, brandActionUrl: null, hasError: true }; 
   }
 }
+

@@ -7,7 +7,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAuth } from "@/hooks/useAuth";
 import { APP_NAME, ROLES } from "@/lib/constants";
-import { Car, User, PlusCircle, Search, ListChecks, Image as ImageIcon, AlertTriangle, UserCheck, MapPin } from "lucide-react"; // Added MapPin
+import { Car, User, PlusCircle, Search, ListChecks, Image as ImageIconLucide, AlertTriangle, UserCheck, MapPin } from "lucide-react"; // Renamed Image to ImageIconLucide
 import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState, useCallback } from "react";
@@ -19,6 +19,7 @@ const FALLBACK_INITIAL_PROMO: PromoDisplayData = {
   generatedImageUri: "https://placehold.co/1200x400.png?text=Cargando+promoci%C3%B3n...",
   brandName: "AndesRide",
   brandLogoUrl: null,
+  brandActionUrl: null,
 };
 
 export default function DashboardPage() {
@@ -34,13 +35,13 @@ export default function DashboardPage() {
         setPromoData(data);
         sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...data, timestamp: Date.now() }));
       } else {
-        const errorData = { ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Promoci%C3%B3n+no+disponible" };
+        const errorData = { ...FALLBACK_INITIAL_PROMO, brandActionUrl: null, generatedImageUri: "https://placehold.co/1200x400.png?text=Promoci%C3%B3n+no+disponible" };
         setPromoData(errorData);
         sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...errorData, timestamp: Date.now() }));
       }
     } catch (error) {
       console.error("Failed to fetch promo data for dashboard:", error);
-      const errorData = { ...FALLBACK_INITIAL_PROMO, generatedImageUri: "https://placehold.co/1200x400.png?text=Error+cargando" };
+      const errorData = { ...FALLBACK_INITIAL_PROMO, brandActionUrl: null, generatedImageUri: "https://placehold.co/1200x400.png?text=Error+cargando" };
       setPromoData(errorData);
       sessionStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...errorData, timestamp: Date.now() }));
     } finally {
@@ -52,7 +53,14 @@ export default function DashboardPage() {
     const cachedDataString = sessionStorage.getItem(SESSION_STORAGE_KEY);
     if (cachedDataString) {
       const cachedData = JSON.parse(cachedDataString);
-      setPromoData(cachedData);
+      // Optional: Check timestamp to refetch if data is too old
+      // const CACHE_DURATION_MS = 5 * 60 * 1000; // 5 minutes
+      // if (Date.now() - cachedData.timestamp < CACHE_DURATION_MS) {
+      //   setPromoData(cachedData);
+      //   setIsLoadingPromo(false);
+      //   return;
+      // }
+      setPromoData(cachedData); // For now, always use cache if present
       setIsLoadingPromo(false);
       return;
     }
@@ -66,6 +74,26 @@ export default function DashboardPage() {
     if (hour < 18) return "Buenas Tardes";
     return "Buenas Noches";
   };
+
+  const PromoImageContent = () => (
+    <>
+      <Image
+        src={promoData.generatedImageUri}
+        alt={`Promoción para ${promoData.brandName}`}
+        fill
+        sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
+        className="object-cover"
+        data-ai-hint="promotional banner"
+        priority
+      />
+      {promoData.hasError && promoData.generatedImageUri.includes("placehold.co") && (
+        <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
+          <AlertTriangle className="h-12 w-12 text-yellow-400 mb-2"/>
+          <p className="text-white text-center text-lg px-4">No se pudo generar la imagen promocional. Mostrando imagen por defecto.</p>
+        </div>
+      )}
+    </>
+  );
 
   return (
     <div className="space-y-8">
@@ -101,20 +129,12 @@ export default function DashboardPage() {
           ) : (
             <>
               <div className="relative group w-full h-[200px] md:h-[300px] lg:h-[400px] rounded-lg overflow-hidden">
-                <Image
-                  src={promoData.generatedImageUri}
-                  alt={`Promoción para ${promoData.brandName}`}
-                  fill
-                  sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw"
-                  className="object-cover"
-                  data-ai-hint="promotional banner"
-                  priority
-                />
-                {promoData.hasError && promoData.generatedImageUri.includes("placehold.co") && (
-                  <div className="absolute inset-0 bg-black/30 flex flex-col items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                    <AlertTriangle className="h-12 w-12 text-yellow-400 mb-2"/>
-                    <p className="text-white text-center text-lg px-4">No se pudo generar la imagen promocional. Mostrando imagen por defecto.</p>
-                  </div>
+                {promoData.brandActionUrl ? (
+                  <a href={promoData.brandActionUrl} target="_blank" rel="noopener noreferrer" aria-label={`Visitar ${promoData.brandName}`}>
+                    <PromoImageContent />
+                  </a>
+                ) : (
+                  <PromoImageContent />
                 )}
               </div>
               <div className="flex items-center gap-4 pt-2">
@@ -228,7 +248,7 @@ export default function DashboardPage() {
              <Card className="hover:shadow-xl transition-shadow">
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-xl">
-                  <ImageIcon className="h-6 w-6 text-accent" /> 
+                  <ImageIconLucide className="h-6 w-6 text-accent" /> 
                   Rutas Guardadas
                 </CardTitle>
                 <CardDescription>
