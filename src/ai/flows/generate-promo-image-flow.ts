@@ -34,8 +34,8 @@ const generatePromotionalImageFlow = ai.defineFlow(
     outputSchema: GeneratePromotionalImageOutputSchema,
   },
   async (input) => {
-    // Simplified default prompt
-    let promptText = input.customPrompt || `Un banner promocional vibrante y atractivo para la marca "${input.brandName}", con temática de viajes y aventura en la región andina. Estilo moderno y limpio.`;
+    // Updated default prompt
+    let promptText = input.customPrompt || `Un banner promocional vibrante y atractivo para la marca "${input.brandName}". Estilo moderno y limpio. el banner debe tener unas dimensiones de 1200px ancho y 400px de alto, la imagen debe estar centrada.`;
 
     if (input.promoText) {
       // Simplified instruction for incorporating promo text
