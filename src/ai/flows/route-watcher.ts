@@ -46,7 +46,7 @@ async function sendNotification(
     subject: string,
     message: string
 ): Promise<boolean> {
-  console.log('[sendNotification FUNCTION] INVOCADA CON:', { passengerEmail, subjectLength: subject.length, messageLength: message.length });
+  console.log('[sendNotification FUNCTION] INVOCADA CON:', { passengerEmail, subjectLength: subject?.length, messageLength: message?.length });
 
   if (!resend) {
     console.error('[sendNotification FUNCTION] Resend client no está inicializado. No se puede enviar el email. Verifica la RESEND_API_KEY.');
@@ -67,7 +67,7 @@ async function sendNotification(
       from: `${APP_NAME} <onboarding@resend.dev>`,
       to: [passengerEmail],
       subject: subject,
-      html: `<p>${message.replace(/\n/g, '<br>')}</p>`,
+      html: `<p>${message.replace(/\n/g, '<br>')}</p>`, // Reemplazar saltos de línea con <br> para HTML
       text: message,
     });
 
@@ -86,9 +86,9 @@ async function sendNotification(
 const prompt = ai.definePrompt({
   name: 'watchRoutePrompt',
   input: {schema: WatchRoutePromptInputSchema},
-  output: {schema: WatchRouteLLMOutputSchema },
+  output: {schema: WatchRouteLLMOutputSchema }, // LLM solo genera subject, message y routeMatchFound
   prompt: `Eres un vigilante de rutas para ${APP_NAME}.
-Tu tarea es determinar si hay un viaje publicado que coincida con la ruta guardada del pasajero y generar el contenido para una notificación por correo electrónico.
+Tu tarea es determinar si hay un viaje publicado que coincida con la ruta guardada del pasajero y generar un ASUNTO para una notificación por correo electrónico.
 RESPONDE ÚNICAMENTE EN FORMATO JSON. Tu respuesta DEBE seguir el schema Zod: {{outputSchema}}.
 NO REPITAS TEXTO. NO USES emojis. NO INVENTES INFORMACIÓN. Entrega solo el JSON.
 
@@ -111,7 +111,7 @@ Instrucciones para el JSON de salida (SI 'tripFound' es true):
 1.  'routeMatchFound': DEBE ser true.
 2.  'message': Un mensaje MUY CORTO confirmando la coincidencia. Ejemplo: "¡Coincidencia encontrada para tu ruta {{{origin}}} - {{{destination}}}!"
 3.  'emailSubject': Un asunto de correo MUY CORTO, profesional y conciso, MAX 70 CARACTERES. Ejemplo: "¡Viaje Encontrado! {{{origin}}} a {{{destination}}} ({{{tripDepartureDateFormatted}}})"
-4.  'emailMessage': El cuerpo del correo. DEBE incluir los detalles del viaje. Ejemplo: "Hola,\\n\\nHemos encontrado un viaje que coincide con tu ruta guardada de {{{origin}}} a {{{destination}}} para el {{{tripDepartureDateFormatted}}}.\\n\\nDetalles del viaje encontrado:\\n- Origen: {{{tripOrigin}}}\\n- Destino: {{{tripDestination}}}\\n- Fecha y Hora Programada: {{{tripDepartureDateTime}}}\\n- Conductor: {{{tripDriverFullName}}}\\n- Asientos Disponibles: {{{tripSeatsAvailable}}}\\n\\nPuedes ver más detalles y solicitar tu asiento en ${APP_NAME}.\\n\\nSaludos,\\nEl equipo de ${APP_NAME}" (ESTE CAMPO ES OBLIGATORIO si 'tripFound' es true)
+
 {{else}}
 No se encontró ningún viaje coincidente para la ruta y fecha especificadas.
 
@@ -119,18 +119,16 @@ Instrucciones para el JSON de salida (SI 'tripFound' es false):
 1.  'routeMatchFound': DEBE ser false.
 2.  'message': Un mensaje MUY CORTO indicando que no se encontró coincidencia. Ejemplo: "No se encontraron viajes para tu ruta {{{origin}}} - {{{destination}}} en la fecha {{{date}}}."
 3.  'emailSubject': DEBE ser una cadena vacía "".
-4.  'emailMessage': DEBE ser una cadena vacía "".
 {{/if}}
 
-**MUY IMPORTANTE: Entrega únicamente un objeto JSON válido que cumpla con el 'outputSchema' Zod proporcionado. Asegúrate de que los campos 'emailSubject' y 'emailMessage' se generen correctamente y por separado. El campo 'emailMessage' ES OBLIGATORIO y no debe estar vacío si 'routeMatchFound' es true.**
+**MUY IMPORTANTE: Entrega únicamente un objeto JSON válido que cumpla con el 'outputSchema' Zod proporcionado. Asegúrate de que el campo 'emailSubject' se genere correctamente.**
 
 Ejemplo de JSON esperado SI hay coincidencia:
 \`\`\`json
 {
   "routeMatchFound": true,
   "message": "¡Coincidencia encontrada para tu ruta Ejemplo Origen - Ejemplo Destino!",
-  "emailSubject": "¡Viaje Encontrado! Ejemplo Origen a Ejemplo Destino (30 de junio de 2025)",
-  "emailMessage": "Hola,\\n\\nHemos encontrado un viaje que coincide con tu ruta guardada de Ejemplo Origen a Ejemplo Destino para el 30 de junio de 2025.\\n\\nDetalles del viaje encontrado:\\n- Origen: Ejemplo Origen\\n- Destino: Ejemplo Destino\\n- Fecha y Hora Programada: 30 de junio de 2025 a las 14:00 hrs (UTC)\\n- Conductor: Nombre del Conductor\\n- Asientos Disponibles: 2\\n\\nPuedes ver más detalles y solicitar tu asiento en ${APP_NAME}.\\n\\nSaludos,\\nEl equipo de ${APP_NAME}"
+  "emailSubject": "¡Viaje Encontrado! Ejemplo Origen a Ejemplo Destino (30 de junio de 2025)"
 }
 \`\`\`
 
@@ -139,8 +137,7 @@ Ejemplo de JSON esperado si NO hay coincidencia:
 {
   "routeMatchFound": false,
   "message": "No se encontraron viajes para tu ruta Ejemplo Origen - Ejemplo Destino en la fecha AAAA-MM-DD.",
-  "emailSubject": "",
-  "emailMessage": ""
+  "emailSubject": ""
 }
 \`\`\`
 `,
@@ -159,7 +156,7 @@ const watchRouteFlow = ai.defineFlow(
   {
     name: 'watchRouteFlowInternal',
     inputSchema: WatchRouteInputSchema,
-    outputSchema: WatchRouteLLMOutputSchema,
+    outputSchema: WatchRouteLLMOutputSchema, // El flow ahora devuelve este schema simplificado
   },
   async (input: WatchRouteInput): Promise<WatchRouteLLMOutput> => {
     console.log('[watchRouteFlow] Flow iniciado con input:', JSON.stringify(input, null, 2));
@@ -182,8 +179,7 @@ const watchRouteFlow = ai.defineFlow(
         return {
             routeMatchFound: false,
             message: `Error al buscar viajes: ${error.message || 'Error desconocido'}`,
-            emailSubject: '',
-            emailMessage: ''
+            emailSubject: ''
         };
     }
     
@@ -197,28 +193,25 @@ const watchRouteFlow = ai.defineFlow(
         tripFound: !!firstMatchingTrip,
         tripOrigin: firstMatchingTrip?.origin,
         tripDestination: firstMatchingTrip?.destination,
-        tripDepartureDateTime: firstMatchingTrip?.departureDateTime, // Ya está formateado como "dd de MMMM de yyyy a las HH:mm hrs (UTC)"
-        tripDepartureDateFormatted: firstMatchingTrip?.departureDateFormatted, // Ya está formateado como "dd de MMMM de yyyy"
+        tripDepartureDateTime: firstMatchingTrip?.departureDateTime,
+        tripDepartureDateFormatted: firstMatchingTrip?.departureDateFormatted,
         tripDriverFullName: firstMatchingTrip?.driverFullName,
         tripSeatsAvailable: firstMatchingTrip?.seatsAvailable,
     };
 
     console.log('[watchRouteFlow] Input para el prompt del LLM (con detalles del primer viaje procesados):', JSON.stringify(promptInput, null, 2));
     
-    let llmOutput: WatchRouteLLMOutput | null = null;
     try {
       const { output } = await prompt(promptInput); 
-      llmOutput = output; 
+      const llmOutput = output; 
       console.log('[watchRouteFlow] Output del LLM (WatchRouteLLMOutputSchema):', JSON.stringify(llmOutput, null, 2));
 
       if (!llmOutput) {
         console.error('[watchRouteFlow] El LLM devolvió null o undefined.');
-        // Devuelve un objeto que cumple con WatchRouteLLMOutputSchema
         return {
           routeMatchFound: false,
           message: 'Error: El LLM no devolvió una respuesta.',
-          emailSubject: '',
-          emailMessage: ''
+          emailSubject: ''
         };
       }
       // Validar la salida del LLM con Zod.
@@ -229,27 +222,17 @@ const watchRouteFlow = ai.defineFlow(
         return {
           routeMatchFound: false, 
           message: "Error: La respuesta de la IA no tuvo el formato esperado.",
-          emailSubject: '',
-          emailMessage: ''
+          emailSubject: ''
         };
       }
-      // Asegurarnos de que si routeMatchFound es true, emailSubject y emailMessage no sean undefined/null y sean strings.
-      if (parsedOutput.data.routeMatchFound) {
-        if (typeof parsedOutput.data.emailSubject !== 'string' || parsedOutput.data.emailSubject.trim() === '') {
-          console.warn('[watchRouteFlow] Advertencia: routeMatchFound es true, pero emailSubject falta o está vacío. Usando fallback.');
-          parsedOutput.data.emailSubject = `Viaje Encontrado: ${input.origin} a ${input.destination}`;
-        }
-        if (typeof parsedOutput.data.emailMessage !== 'string' || parsedOutput.data.emailMessage.trim() === '') {
-          console.error('[watchRouteFlow] Error Crítico: routeMatchFound es true, pero emailMessage falta o está vacío. La notificación no se enviará.');
-           return {
-            ...parsedOutput.data, // Mantener message y routeMatchFound
-            message: parsedOutput.data.message + " (Error: Falta el cuerpo del email de la IA)",
-            emailSubject: parsedOutput.data.emailSubject, // Mantener el subject (o su fallback)
-            emailMessage: "", // Forzar a vacío para evitar envío
-            routeMatchFound: true // Mantener true para que el log de watchRoute indique el problema
-          };
-        }
+      
+      if (parsedOutput.data.routeMatchFound && (typeof parsedOutput.data.emailSubject !== 'string' || parsedOutput.data.emailSubject.trim() === '')) {
+          console.warn('[watchRouteFlow] Advertencia: routeMatchFound es true, pero emailSubject falta o está vacío. Usando fallback para subject.');
+          // Crear un subject de fallback si el LLM no lo proporciona pero encontró una ruta
+          const fallbackSubject = `¡Viaje Encontrado! ${input.origin} a ${input.destination} (${promptInput.tripDepartureDateFormatted || input.date})`;
+          parsedOutput.data.emailSubject = fallbackSubject;
       }
+
       return parsedOutput.data;
 
     } catch (error: any) {
@@ -257,8 +240,7 @@ const watchRouteFlow = ai.defineFlow(
       return {
         routeMatchFound: false, 
         message: `Error al procesar la solicitud con IA: ${error.message || 'Error desconocido del LLM.'}`,
-        emailSubject: '',
-        emailMessage: ''
+        emailSubject: ''
       };
     }
   }
@@ -266,44 +248,62 @@ const watchRouteFlow = ai.defineFlow(
 
 export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutput> {
   console.log('[watchRoute] Invoking watchRouteFlowInternal con input:', JSON.stringify(input, null, 2));
+  
+  // Para pasar los detalles del viaje al cuerpo del email, necesitamos los datos del viaje aquí.
+  // Podríamos obtenerlos de nuevo o hacer que watchRouteFlow devuelva más que solo la salida del LLM.
+  // Por simplicidad y para evitar otra llamada a la BD, reutilizaremos la lógica de búsqueda aquí momentáneamente.
+  // Idealmente, `watchRouteFlow` debería devolver los datos del viaje si se encontró uno.
+  // Por ahora, duplicaremos la búsqueda para tener acceso a los detalles del viaje para el cuerpo del email.
+  // ESTO ES TEMPORAL Y DEBE REFACTORIZARSE PARA EVITAR DOBLE LLAMADA A findPublishedMatchingTripsAction
+
+  const searchInputForEmailBody: FindPublishedMatchingTripsInput = {
+      origin: input.origin,
+      destination: input.destination,
+      searchDate: input.date,
+  };
+  const matchingTripsForEmail = await findPublishedMatchingTripsAction(searchInputForEmailBody);
+  const firstMatchingTripForEmail = matchingTripsForEmail.length > 0 ? matchingTripsForEmail[0] : null;
+  
   const llmResult = await watchRouteFlow(input); 
   console.log('[watchRoute] LLM Result (desde watchRouteFlowInternal):', JSON.stringify(llmResult, null, 2));
 
   let notificationSent = false;
-  
-  const hasValidSubject = typeof llmResult.emailSubject === 'string' && llmResult.emailSubject.trim() !== '';
-  const hasValidMessage = typeof llmResult.emailMessage === 'string' && llmResult.emailMessage.trim() !== '';
+  let finalEmailSubject = "";
+  let finalEmailMessage = ""; // Ahora lo construiremos aquí
 
-  if (llmResult.routeMatchFound && hasValidSubject && hasValidMessage) {
-      let cleanedSubject = llmResult.emailSubject!.trim().replace(/\s+/g, ' ');
+  const hasValidSubjectFromLLM = llmResult.emailSubject && typeof llmResult.emailSubject === 'string' && llmResult.emailSubject.trim() !== '';
+
+  if (llmResult.routeMatchFound && hasValidSubjectFromLLM && firstMatchingTripForEmail) {
+      finalEmailSubject = llmResult.emailSubject!.trim().replace(/\s+/g, ' ');
       const maxSubjectLength = 70;
-      if (cleanedSubject.length > maxSubjectLength) {
-          cleanedSubject = cleanedSubject.substring(0, maxSubjectLength - 3) + "...";
-          console.warn(`[watchRoute] emailSubject truncado a: "${cleanedSubject}"`);
+      if (finalEmailSubject.length > maxSubjectLength) {
+          finalEmailSubject = finalEmailSubject.substring(0, maxSubjectLength - 3) + "...";
+          console.warn(`[watchRoute] emailSubject truncado a: "${finalEmailSubject}"`);
       }
-      // Si después de limpiar, el subject queda vacío (solo eran espacios), pero el campo existía.
-      if (cleanedSubject.length === 0 && typeof llmResult.emailSubject === 'string') { 
-          // Intentar reconstruir un subject básico si el LLM falló en proporcionarlo.
-          const passengerDateFormatted = format(parseISO(input.date), "dd 'de' MMMM 'de' yyyy", { locale: es });
-          cleanedSubject = `¡Viaje Encontrado! ${input.origin} a ${input.destination} (${passengerDateFormatted})`;
-          console.warn(`[watchRoute] emailSubject estaba vacío o contenía solo espacios, usando fallback: "${cleanedSubject}"`);
+      if (finalEmailSubject.length === 0) { 
+          const passengerDateFormatted = firstMatchingTripForEmail.departureDateFormatted || format(parseISO(input.date), "dd 'de' MMMM 'de' yyyy", { locale: es });
+          finalEmailSubject = `¡Viaje Encontrado! ${input.origin} a ${input.destination} (${passengerDateFormatted})`;
+          console.warn(`[watchRoute] emailSubject estaba vacío, usando fallback: "${finalEmailSubject}"`);
       }
       
-      console.log(`[watchRoute] Intentando enviar notificación. Asunto (limpio): "${cleanedSubject}"`);
-      console.log(`[watchRoute] Mensaje del correo (primeros 100 chars): "${llmResult.emailMessage!.substring(0,100)}..."`);
+      // Construir el emailMessage aquí
+      finalEmailMessage = `Hola,\n\nHemos encontrado un viaje que coincide con tu ruta guardada de ${input.origin} a ${input.destination}.\n\nDetalles del viaje encontrado:\n- Origen: ${firstMatchingTripForEmail.origin}\n- Destino: ${firstMatchingTripForEmail.destination}\n- Fecha y Hora Programada: ${firstMatchingTripForEmail.departureDateTime}\n- Conductor: ${firstMatchingTripForEmail.driverFullName || 'No especificado'}\n- Asientos Disponibles: ${firstMatchingTripForEmail.seatsAvailable}\n\nPuedes ver más detalles y solicitar tu asiento en ${APP_NAME}.\n\nSaludos,\nEl equipo de ${APP_NAME}`;
+
+      console.log(`[watchRoute] Intentando enviar notificación. Asunto (limpio): "${finalEmailSubject}"`);
+      console.log(`[watchRoute] Mensaje del correo construido: "${finalEmailMessage.substring(0,100)}..."`);
       
       notificationSent = await sendNotification(
         input.passengerEmail,
-        cleanedSubject,
-        llmResult.emailMessage! 
+        finalEmailSubject,
+        finalEmailMessage
       );
       console.log(`[watchRoute] Resultado de sendNotification: ${notificationSent}`);
   } else {
     let reason = "";
     if (!llmResult.routeMatchFound) reason = "No se encontró coincidencia de ruta según el LLM.";
-    else if (!hasValidSubject) reason = "emailSubject falta, no es string o es vacío.";
-    else if (!hasValidMessage) reason = "emailMessage falta, no es string o es vacío.";
-    else reason = "Condición desconocida."; // No debería llegar aquí si las validaciones están bien
+    else if (!hasValidSubjectFromLLM) reason = "emailSubject falta, no es string o es vacío según el LLM.";
+    else if (!firstMatchingTripForEmail) reason = "No se encontraron detalles del viaje para construir el email (inesperado si routeMatchFound es true).";
+    else reason = "Condición desconocida para no enviar notificación.";
     
     console.warn(`[watchRoute] No se enviará notificación. Razón: ${reason}. Output LLM:`, llmResult);
   }
@@ -312,10 +312,12 @@ export async function watchRoute(input: WatchRouteInput): Promise<WatchRouteOutp
     routeMatchFound: llmResult.routeMatchFound,
     notificationSent: notificationSent,
     message: llmResult.message || "Mensaje no proporcionado por el LLM.",
-    emailContent: (llmResult.routeMatchFound && hasValidSubject && hasValidMessage)
-      ? { subject: llmResult.emailSubject!, body: llmResult.emailMessage! }
+    emailContent: (notificationSent && finalEmailSubject && finalEmailMessage)
+      ? { subject: finalEmailSubject, body: finalEmailMessage }
       : undefined
   };
 }
 
 export type { WatchRouteInput, WatchRouteOutput };
+
+```

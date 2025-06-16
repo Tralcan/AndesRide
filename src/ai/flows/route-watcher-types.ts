@@ -31,12 +31,11 @@ export const WatchRoutePromptInputSchema = z.object({
 export type WatchRoutePromptInput = z.infer<typeof WatchRoutePromptInputSchema>;
 
 
-// Schema para la salida esperada del LLM
+// Schema para la salida esperada del LLM - SIMPLIFICADO
 export const WatchRouteLLMOutputSchema = z.object({
   routeMatchFound: z.boolean().describe('Si se encontró una ruta coincidente REAL Y PUBLICADA.'),
   message: z.string().describe('Un mensaje breve que indica el resultado de la vigilancia de la ruta (ej. "Coincidencia encontrada!" o "No se encontraron viajes.").'),
-  emailSubject: z.string().optional().describe('El asunto del correo electrónico a enviar, si se encontró una coincidencia. Debe ser breve, profesional, conciso, y no exceder los 70 caracteres. NO USAR emojis.'),
-  emailMessage: z.string().optional().describe('El cuerpo del mensaje del correo electrónico a enviar, si se encontró una coincidencia. Debe incluir los detalles del viaje y un saludo amigable. No usar emojis. Este campo ES OBLIGATORIO si routeMatchFound es true.'),
+  emailSubject: z.string().optional().describe('El asunto del correo electrónico a enviar, si se encontró una coincidencia. Debe ser breve, profesional, conciso, y no exceder los 70 caracteres. NO USAR emojis. NO REPETIR TEXTO.'),
 });
 export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 
@@ -45,6 +44,8 @@ export type WatchRouteLLMOutput = z.infer<typeof WatchRouteLLMOutputSchema>;
 export interface WatchRouteOutput {
     routeMatchFound: boolean;
     notificationSent: boolean;
-    message: string;
-    emailContent?: { subject: string; body: string };
+    message: string; // Mensaje para la UI, puede ser el del LLM o uno genérico si el LLM falla
+    emailContent?: { subject: string; body: string }; // Para debugging o pruebas
 }
+
+```
