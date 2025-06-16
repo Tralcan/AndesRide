@@ -47,5 +47,3 @@ export interface WatchRouteOutput {
     message: string; // Mensaje para la UI, puede ser el del LLM o uno genérico si el LLM falla
     emailContent?: { subject: string; body: string }; // Para debugging o pruebas
 }
-
-```
