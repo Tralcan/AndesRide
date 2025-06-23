@@ -61,11 +61,11 @@ async function sendNotification(
     console.error(`[sendNotification FUNCTION] Faltan campos requeridos. Recibido: passengerEmail=${passengerEmail}, subject (longitud)=${subject?.length}, messageBody (longitud)=${messageBody?.length}. No se puede enviar el email.`);
     return false;
   }
-  console.log(`[sendNotification FUNCTION] Intentando enviar email. De: ${APP_NAME} <onboarding@resend.dev>, Para: ${passengerEmail}, Asunto: "${subject}"`);
+  console.log(`[sendNotification FUNCTION] Intentando enviar email. De: ${APP_NAME} <andesride@notifications.cl>, Para: ${passengerEmail}, Asunto: "${subject}"`);
 
   try {
     const { data, error } = await resend.emails.send({
-      from: `${APP_NAME} <onboarding@resend.dev>`,
+      from: `${APP_NAME} <andesride@notifications.cl>`,
       to: [passengerEmail],
       subject: subject,
       html: `<p>${messageBody.replace(/\n/g, '<br>')}</p>`,
